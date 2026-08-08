@@ -62,6 +62,10 @@ type AuthConfig struct {
 	EmailVerifyTTL   time.Duration
 	PasswordResetTTL time.Duration
 	WebBaseURL       string
+
+	// AutoVerifyEmail marks new accounts verified at signup instead of emailing a link.
+	// DEVELOPMENT ONLY — configs.Validate refuses it in production. See D29 and D105.
+	AutoVerifyEmail bool
 }
 
 // AuthDeps collects the service's dependencies.
@@ -180,6 +184,20 @@ func (s *AuthService) Signup(ctx context.Context, in SignupInput) (*domain.User,
 		Version:      1,
 		CreatedAt:    now,
 		UpdatedAt:    now,
+	}
+
+	// Development escape hatch (D105). No token is issued and no mail is sent, which is the
+	// point: the account is verified because there was never anything to prove locally.
+	// configs.Validate refuses this flag in production, so the D29 guarantee is intact where
+	// it means something.
+	if s.cfg.AutoVerifyEmail {
+		user.EmailVerifiedAt = &now
+		if err := s.tx.WithinTx(ctx, func(ctx context.Context) error {
+			return s.users.Create(ctx, user)
+		}); err != nil {
+			return nil, err
+		}
+		return user, nil
 	}
 
 	var verifyToken secrets.Token

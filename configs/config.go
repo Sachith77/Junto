@@ -140,6 +140,19 @@ type AuthConfig struct {
 	// being issued, and a short window makes leakage into logs inert. Stage 2.
 	WSTicketTTL time.Duration
 
+	// AutoVerifyEmail marks new accounts verified at signup, skipping the emailed link.
+	//
+	// DEVELOPMENT AND TEST ONLY. Validate() refuses it in production, because it directly
+	// contradicts D29 — login requires a verified email precisely so that an address which
+	// was never proven cannot leave an account unrecoverable by password reset.
+	//
+	// It exists because the local demo loop (sign up, open Mailpit, find the link, click it)
+	// is friction with no reviewing value, and the alternative people actually reach for is
+	// weakening the real policy. The production behaviour is unchanged and unchangeable by
+	// configuration; this is an escape hatch bolted open only where there is nothing to
+	// protect.
+	AutoVerifyEmail bool
+
 	Argon2 Argon2Config
 }
 
@@ -220,6 +233,8 @@ func Load() (*Config, error) {
 			EmailVerifyTTL:   envDuration("EMAIL_VERIFY_TTL", 24*time.Hour),
 			PasswordResetTTL: envDuration("PASSWORD_RESET_TTL", time.Hour),
 			WSTicketTTL:      envDuration("WS_TICKET_TTL", 30*time.Second),
+			// DEVELOPMENT ONLY — see AuthConfig.AutoVerifyEmail and Validate().
+			AutoVerifyEmail: envBool("AUTH_AUTO_VERIFY_EMAIL", false),
 			Argon2: Argon2Config{
 				// OWASP's second recommended profile: 64 MiB, t=3, p=4.
 				MemoryKiB:   uint32(envInt("ARGON2_MEMORY_KIB", 64*1024)),
@@ -361,6 +376,15 @@ func (c *Config) Validate() error {
 	// Production-only rules. These are the settings that are convenient in development and
 	// dangerous in production, so the environment gate is the whole point.
 	if c.Env.IsProduction() {
+		// Refused rather than silently ignored. An operator who set this believes signups are
+		// auto-verified; booting anyway with it quietly disabled would be the worse failure —
+		// the same reasoning as D19 on malformed env values.
+		if c.Auth.AutoVerifyEmail {
+			problems = append(problems,
+				"AUTH_AUTO_VERIFY_EMAIL must not be enabled in production: it bypasses email "+
+					"verification, which D29 requires so an unproven address cannot leave an "+
+					"account unrecoverable")
+		}
 		if !c.SMTP.UseTLS {
 			problems = append(problems, "SMTP_USE_TLS must be true in production")
 		}

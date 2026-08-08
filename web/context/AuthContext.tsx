@@ -12,7 +12,10 @@ interface AuthState {
   user: User | null;
   status: "loading" | "authenticated" | "anonymous";
   login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, displayName: string) => Promise<void>;
+  /** Resolves with the created user, so callers can branch on whether the server
+   *  already marked the address verified (the AUTH_AUTO_VERIFY_EMAIL dev path)
+   *  rather than the client duplicating that configuration. */
+  signup: (email: string, password: string, displayName: string) => Promise<User>;
   logout: () => Promise<void>;
 }
 
@@ -71,9 +74,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStatus("authenticated");
   }, []);
 
-  const signup = useCallback(async (email: string, password: string, displayName: string) => {
-    await authApi.signup(email, password, displayName);
-  }, []);
+  const signup = useCallback(
+    async (email: string, password: string, displayName: string) =>
+      authApi.signup(email, password, displayName),
+    []
+  );
 
   const logout = useCallback(async () => {
     await authApi.logout();
