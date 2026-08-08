@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# CI fails on lint failure, test failure, or race-detector failure. The race detector runs
+# from Stage 1 rather than being switched on for Stage 2, because a data race introduced
+# now would be found much later and attributed to the sync engine.
+
+env:
+  GO_VERSION: "1.26"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt'd:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Must be 16+: the items -> days composite FK uses ON DELETE SET NULL (column_list),
+        # which is PG15+. Pinned rather than floating so a schema feature cannot silently
+        # disappear under us.
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: junto
+          POSTGRES_PASSWORD: junto_dev_password
+          POSTGRES_DB: junto
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U junto -d junto"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://junto:junto_dev_password@localhost:5432/junto?sslmode=disable
+      JWT_SECRET: ci-only-secret-at-least-thirty-two-bytes-long
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Verify generated sqlc code is current
+        # Generated code is committed so the build needs no code generator. That only works
+        # if it is actually regenerated when a query or the schema changes; this fails the
+        # build when someone edits SQL and forgets to run `sqlc generate`.
+        #
+        # The output directory is DELETED first. sqlc does not remove generated files whose
+        # query file has gone, so a deleted .sql leaves a stale .sql.go behind — and because
+        # that stale file is already committed, a plain `git diff` check would not notice.
+        # Regenerating from empty makes the diff tell the whole truth.
+        run: |
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@v1.31.1
+          rm -rf internal/repository/sqlcgen
+          sqlc generate
+          git diff --exit-code internal/repository/sqlcgen
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Apply migrations
+        run: go run ./cmd/migrate up
+
+      - name: Verify migrations roll back and re-apply
+        # A down migration nobody runs is a down migration that does not work. Exercising
+        # the full cycle is the only way to know the rollback path is real.
+        run: |
+          go run ./cmd/migrate down
+          go run ./cmd/migrate down
+          go run ./cmd/migrate up
+          go run ./cmd/migrate version
+
+      - name: Verify schema invariants
+        # Adversarial: every assertion attempts a violation and expects rejection. Proves
+        # the schema holds even against a writer that bypasses our queries entirely.
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f tests/schema_verify.sql
+
+      - name: Test with race detector
+        # Repository and API tests start their own Postgres 16 via testcontainers,
+        # independent of the service container above. Deliberate: the service container backs
+        # the migration lifecycle and the psql-based schema checks, while testcontainers keeps
+        # the Go tests self-contained and identical to a local run with no setup.
+        #
+        # -coverpkg is required, not cosmetic. Without it, code exercised by a test in ANOTHER
+        # package counts as zero — which reported internal/middleware and
+        # internal/transport/http at 0% while their integration tests in tests/ were passing.
+        # A coverage gate reading those numbers would be measuring the wrong thing.
+        run: >
+          go test ./... -race
+          -coverprofile=coverage.out -covermode=atomic
+          -coverpkg=./internal/...,./pkg/...,./configs
+
+      - name: Coverage gate
+        # A guideline, not a number to game. The gate exists so a drop is visible in the diff
+        # rather than discovered three stages later.
+        run: |
+          go tool cover -func=coverage.out | tail -n 1
+          pct=$(go tool cover -func=coverage.out | tail -n 1 | grep -oE '[0-9]+\.[0-9]+')
+          echo "total coverage: ${pct}%"
+          if [ "$(echo "$pct < 75" | bc -l)" = "1" ]; then
+            echo "::error::total coverage ${pct}% is below the 75% floor"
+            exit 1
+          fi

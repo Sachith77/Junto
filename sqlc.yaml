@@ -1,0 +1,61 @@
+version: "2"
+
+# sqlc generates type-safe Go from the SQL we actually write, instead of an ORM generating
+# SQL from Go we did not write. The trade is deliberate: we keep full control of the query
+# (and can read the plan), and pay for it with generated structs that must be mapped to
+# domain types in internal/repository. That mapping is the boilerplate that keeps
+# internal/service free of any persistence type — see the note in internal/domain/ports.go.
+
+sql:
+  - engine: postgresql
+    # Only the *.up.sql files. Globbing rather than listing them keeps a new migration from
+    # silently being left out, which would make sqlc generate against a stale schema.
+    schema: "migrations/*.up.sql"
+    queries: "internal/repository/queries"
+
+    gen:
+      go:
+        package: "sqlcgen"
+        out: "internal/repository/sqlcgen"
+        sql_package: "pgx/v5"
+
+        # Nullable columns become *T rather than pgtype wrappers, so the mapping layer is
+        # mostly field copies instead of pgtype unwrapping.
+        emit_pointers_for_null_types: true
+        # A nil slice and an empty result set are the same thing to a caller; returning
+        # empty avoids `null` vs `[]` inconsistency leaking all the way to JSON.
+        emit_empty_slices: true
+        emit_interface: false
+        emit_prepared_queries: false
+        emit_json_tags: false
+
+        # Align generated types with domain types where the mapping would otherwise be
+        # pure noise. Everything not listed here (time-of-day, inet, numeric) is converted
+        # explicitly in internal/repository/mapping.go, where the conversion is visible.
+        overrides:
+          - db_type: "uuid"
+            go_type: "github.com/google/uuid.UUID"
+          - db_type: "uuid"
+            nullable: true
+            go_type:
+              import: "github.com/google/uuid"
+              type: "UUID"
+              pointer: true
+
+          - db_type: "timestamptz"
+            go_type: "time.Time"
+          - db_type: "timestamptz"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
+
+          - db_type: "date"
+            go_type: "time.Time"
+          - db_type: "date"
+            nullable: true
+            go_type:
+              import: "time"
+              type: "Time"
+              pointer: true
