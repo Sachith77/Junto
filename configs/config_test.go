@@ -183,6 +183,10 @@ func TestProductionOnlyRules(t *testing.T) {
 		{"wildcard CORS", "CORS_ALLOWED_ORIGINS", "*", "CORS"},
 		{"http CORS origin", "CORS_ALLOWED_ORIGINS", "http://junto.app", "https"},
 		{"unencrypted database", "DATABASE_URL", "postgres://j:p@db/j?sslmode=disable", "TLS"},
+		// D105: the development convenience that bypasses email verification must not be
+		// merely ignored in production — an operator who set it believes signups are
+		// auto-verified, and booting anyway with it silently off is the worse failure (D19).
+		{"auto-verified email", "AUTH_AUTO_VERIFY_EMAIL", "true", "AUTH_AUTO_VERIFY_EMAIL"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

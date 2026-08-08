@@ -178,10 +178,16 @@ func run() error {
 			EmailVerifyTTL:   cfg.Auth.EmailVerifyTTL,
 			PasswordResetTTL: cfg.Auth.PasswordResetTTL,
 			WebBaseURL:       cfg.App.WebBaseURL,
+			AutoVerifyEmail:  cfg.Auth.AutoVerifyEmail,
 		},
 	})
 	if err != nil {
 		return fmt.Errorf("building auth service: %w", err)
+	}
+	if cfg.Auth.AutoVerifyEmail {
+		logger.Warn("AUTH_AUTO_VERIFY_EMAIL is on: new accounts are verified at signup and no " +
+			"verification email is sent. Development convenience only — config validation " +
+			"refuses this in production")
 	}
 
 	// The broker is built BEFORE the planning services, because they take it as a

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { ButtonLink } from "@/components/ui/Button";
 import { useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { ApiError } from "@/lib/http";
@@ -11,7 +12,9 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
+  // null = not submitted. "verify" = check your inbox. "ready" = the server already
+  // marked the address verified (AUTH_AUTO_VERIFY_EMAIL), so there is nothing to wait for.
+  const [done, setDone] = useState<null | "verify" | "ready">(null);
   const [submitting, setSubmitting] = useState(false);
 
   const onSubmit = async (e: React.FormEvent) => {
@@ -19,8 +22,10 @@ export default function SignupPage() {
     setError(null);
     setSubmitting(true);
     try {
-      await signup(email, password, displayName);
-      setDone(true);
+      const user = await signup(email, password, displayName);
+      // Branch on what the server actually returned rather than on a client-side
+      // copy of the server's configuration — the response is the source of truth.
+      setDone(user.email_verified_at ? "ready" : "verify");
     } catch (err) {
       if (err instanceof ApiError) {
         setError(err.violations[0]?.message ?? err.message);
@@ -35,14 +40,36 @@ export default function SignupPage() {
   if (done) {
     return (
       <main className="flex flex-1 items-center justify-center p-8">
-        <div className="max-w-sm space-y-2 text-center">
-          <h1 className="text-2xl font-semibold">Check your email</h1>
-          <p className="text-neutral-500">
-            We sent a verification link to {email}. Follow it, then log in.
+        <div className="max-w-sm space-y-3 text-center">
+          <h1 className="font-display text-display-lg text-fg">
+            {done === "ready" ? "You're all set" : "Check your email"}
+          </h1>
+          <p className="text-ui-lg text-fg-muted">
+            {done === "ready" ? (
+              <>Your account is ready. Log in and start planning.</>
+            ) : (
+              <>We sent a verification link to {email}. Follow it, then log in.</>
+            )}
           </p>
-          <Link href="/login" className="text-blue-600 underline">
-            Back to log in
-          </Link>
+          <div className="pt-2">
+            <ButtonLink href="/login" variant="primary" size="lg">
+              {done === "ready" ? "Log in" : "Back to log in"}
+            </ButtonLink>
+          </div>
+          {done === "verify" && (
+            <p className="pt-2 text-ui-xs text-fg-subtle">
+              Running locally? Mail is captured by Mailpit at{" "}
+              <a
+                href="http://localhost:8025"
+                target="_blank"
+                rel="noreferrer"
+                className="text-accent-text underline"
+              >
+                localhost:8025
+              </a>
+              .
+            </p>
+          )}
         </div>
       </main>
     );

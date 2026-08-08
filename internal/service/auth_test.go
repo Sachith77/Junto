@@ -771,3 +771,56 @@ func TestListSessionsReturnsOnlyOwnActiveSessions(t *testing.T) {
 
 // hashOf mirrors what the service stores, so tests can look tokens up by hash.
 func hashOf(raw string) []byte { return secrets.Hash(raw) }
+
+// --- AUTH_AUTO_VERIFY_EMAIL (D105) ---
+
+// TestAutoVerifyEmailSkipsTheLinkEntirely pins the development escape hatch.
+//
+// The interesting assertion is not just that the account comes back verified — it is that NO
+// email is sent and NO verification token is issued. A version that emailed a link and then
+// also verified the account would leave a live, unspent credential lying in an inbox for an
+// account that never needed it.
+func TestAutoVerifyEmailSkipsTheLinkEntirely(t *testing.T) {
+	h := newHarness(t)
+	h.svc.cfg.AutoVerifyEmail = true
+	ctx := context.Background()
+
+	user, err := h.svc.Signup(ctx, SignupInput{
+		Email: "skip@example.com", Password: testPassword, DisplayName: "Skip",
+	})
+	if err != nil {
+		t.Fatalf("signup: %v", err)
+	}
+	if !user.IsEmailVerified() {
+		t.Error("with AutoVerifyEmail the account must be verified at signup")
+	}
+	if msgs := h.mailer.Messages(); len(msgs) != 0 {
+		t.Errorf("expected no verification email, got %d", len(msgs))
+	}
+
+	// And the account is genuinely usable: login enforces verification (D29), so a login
+	// that succeeds is the real proof rather than a flag read back from memory.
+	if _, _, err := h.svc.Login(ctx, LoginInput{
+		Email: "skip@example.com", Password: testPassword,
+	}); err != nil {
+		t.Errorf("an auto-verified account must be able to log in: %v", err)
+	}
+}
+
+// TestSignupStillRequiresVerificationByDefault is the other half: the escape hatch must be
+// OFF unless explicitly switched on, so the default build keeps D29's guarantee.
+func TestSignupStillRequiresVerificationByDefault(t *testing.T) {
+	h := newHarness(t)
+	ctx := context.Background()
+
+	if _, err := h.svc.Signup(ctx, SignupInput{
+		Email: "normal@example.com", Password: testPassword, DisplayName: "Normal",
+	}); err != nil {
+		t.Fatalf("signup: %v", err)
+	}
+	if _, _, err := h.svc.Login(ctx, LoginInput{
+		Email: "normal@example.com", Password: testPassword,
+	}); !errors.Is(err, domain.ErrEmailNotVerified) {
+		t.Errorf("login before verification = %v, want ErrEmailNotVerified", err)
+	}
+}
