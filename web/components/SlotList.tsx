@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { listSlots } from "@/lib/api/slots";
 import { useTripSocket } from "@/context/TripSocketContext";
+import { CommentsList } from "./CommentsList";
 import { VotingSlot } from "./VotingSlot";
 import type { OpFrame, Slot } from "@/lib/types";
 
@@ -45,6 +46,10 @@ export function SlotList({ tripId }: { tripId: string }) {
             )}
           </div>
           <VotingSlot tripId={tripId} slot={slot} />
+          <div className="border-t border-neutral-100 pt-3">
+            <h3 className="mb-2 text-sm font-medium text-neutral-500">Discussion</h3>
+            <CommentsList tripId={tripId} slotId={slot.id} />
+          </div>
         </section>
       ))}
     </div>

@@ -304,6 +304,27 @@ func toDomainAttachments(rows []sqlcgen.Attachment) []*domain.Attachment {
 	return out
 }
 
+func toDomainComment(row sqlcgen.Comment) *domain.Comment {
+	return &domain.Comment{
+		ID:        row.ID,
+		SlotID:    row.SlotID,
+		TripID:    row.TripID,
+		Body:      row.Body,
+		AuthorID:  row.AuthorID,
+		CreatedAt: row.CreatedAt,
+		UpdatedAt: row.UpdatedAt,
+		DeletedAt: row.DeletedAt,
+	}
+}
+
+func toDomainComments(rows []sqlcgen.Comment) []*domain.Comment {
+	out := make([]*domain.Comment, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toDomainComment(row))
+	}
+	return out
+}
+
 // --- operation log ---
 //
 // The one mapping in this file with no field conversion at all: trip_ops is stored in the

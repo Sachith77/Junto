@@ -89,6 +89,15 @@ const (
 	// file at confirmation. A `pending` row is never announced; see AttachmentService.
 	OpAttachmentAdd    OpKind = "attachment.add.v1"
 	OpAttachmentRemove OpKind = "attachment.remove.v1"
+
+	// OpCommentCreate/OpCommentDelete are the whole comment vocabulary — append-only, the
+	// same treatment as attachments (D46/D84), not the field-level-LWW treatment slots and
+	// options get. A comment is an event, not a mergeable value, so there is deliberately no
+	// comment.edit: post a new one, delete the old one. Unlike attachments, comments are
+	// WS-native (no presign exchange to gate behind REST-only) and go through the sync engine
+	// like any other op.
+	OpCommentCreate OpKind = "comment.create.v1"
+	OpCommentDelete OpKind = "comment.delete.v1"
 )
 
 // opKinds is the complete vocabulary. An unknown kind is rejected at the transport boundary
@@ -120,6 +129,9 @@ var opKinds = map[OpKind][]string{
 		FieldSizeBytes, FieldOriginalName, FieldSlotOptionID, FieldBudgetEntryID, FieldSlotID,
 		FieldUploadedBy},
 	OpAttachmentRemove: {FieldDeletedAt},
+
+	OpCommentCreate: {FieldSlotID, FieldBody},
+	OpCommentDelete: {FieldDeletedAt},
 }
 
 // totalMaskKinds are the kinds whose mask MUST name every field the kind allows.
@@ -149,6 +161,12 @@ var opKinds = map[OpKind][]string{
 var totalMaskKinds = map[OpKind]struct{}{
 	OpBudgetSet:     {},
 	OpAttachmentAdd: {},
+	// comment.create names all three of its fields by construction — there is no edit verb to
+	// guard a partial write against, so the enforcement above is moot for these kinds. They
+	// are listed anyway so Mergeable() reports false, matching "comments are broadcast/no-merge,
+	// same treatment as attachments" rather than that being an accident of the map's absence.
+	OpCommentCreate: {},
+	OpCommentDelete: {},
 }
 
 // RequiresTotalMask reports whether k rejects a partial field mask.
@@ -217,6 +235,9 @@ const (
 	FieldOriginalName  = "original_name"
 	FieldBudgetEntryID = "budget_entry_id"
 	FieldUploadedBy    = "uploaded_by"
+
+	// Comments. (author_id is deliberately not a wire field — see CommentValues.)
+	FieldBody = "body"
 )
 
 // FieldMask names exactly the fields an operation changes.
@@ -375,6 +396,8 @@ func (k OpKind) Entity() string {
 		return "budget"
 	case OpAttachmentAdd, OpAttachmentRemove:
 		return "attachment"
+	case OpCommentCreate, OpCommentDelete:
+		return "comment"
 	}
 	return ""
 }
@@ -567,6 +590,31 @@ func AttachmentPayload(a *Attachment, mask FieldMask) ([]byte, error) {
 	return buildPayload(AttachmentValues(a), mask, 0, a.UpdatedAt)
 }
 
+// CommentValues projects a comment into wire field values.
+//
+// AuthorID is deliberately NOT a wire field, the same choice slots and options make for
+// created_by/proposed_by (see applySlot/applyOption): the server would ignore whatever a
+// client sent anyway (CommentService.Create always uses the authenticated actor's own id,
+// never a client-supplied one), so carrying it in the mask would require a client to send a
+// value that has no effect and the server to decode and discard it. It is derived from
+// op.ActorID at fold time instead — see applyComment.
+func CommentValues(c *Comment) map[string]any {
+	return map[string]any{
+		FieldSlotID:    c.SlotID.String(),
+		FieldBody:      c.Body,
+		FieldDeletedAt: c.DeletedAt,
+	}
+}
+
+// CommentPayload encodes the masked fields of a comment as persisted.
+//
+// Version is 0 for the same reason AttachmentPayload's is (D46): comments carry no version
+// column, because there is no edit verb and so nothing to conflict over. Passing 0 rather
+// than omitting it keeps "nothing to version" visible in the log.
+func CommentPayload(c *Comment, mask FieldMask) ([]byte, error) {
+	return buildPayload(CommentValues(c), mask, 0, c.UpdatedAt)
+}
+
 // DayValues projects a day into wire field values.
 func DayValues(d *Day) map[string]any {
 	return map[string]any{
@@ -645,6 +693,7 @@ type Replica struct {
 	// to know "the budget is atomic" would be a place for a client to disagree with the server.
 	Budgets     map[ID]*BudgetEntry
 	Attachments map[ID]*Attachment
+	Comments    map[ID]*Comment
 }
 
 // NewReplica returns an empty projection.
@@ -656,6 +705,7 @@ func NewReplica() *Replica {
 		Votes:       map[ID]*Vote{},
 		Budgets:     map[ID]*BudgetEntry{},
 		Attachments: map[ID]*Attachment{},
+		Comments:    map[ID]*Comment{},
 	}
 }
 
@@ -718,6 +768,8 @@ func (r *Replica) Apply(op Op) error {
 		err = r.applyBudget(op, fields, version)
 	case "attachment":
 		err = r.applyAttachment(op, fields)
+	case "comment":
+		err = r.applyComment(op, fields)
 	default:
 		err = fmt.Errorf("replica: unknown op kind %q", op.Kind)
 	}
@@ -1080,6 +1132,41 @@ func (r *Replica) applyAttachment(op Op, fields map[string]json.RawMessage) erro
 		return err
 	} else if present {
 		a.DeletedAt = ts
+	}
+	return nil
+}
+
+// applyComment folds a comment.
+//
+// No version parameter, for the same reason applyAttachment takes none: comments have no
+// version column (D46-style — no edit verb, nothing to conflict over).
+func (r *Replica) applyComment(op Op, fields map[string]json.RawMessage) error {
+	c, ok := r.Comments[op.EntityID]
+	if !ok {
+		if op.Kind != OpCommentCreate {
+			return fmt.Errorf("replica: op %s targets unknown comment %s", op.Kind, op.EntityID)
+		}
+		// AuthorID comes from op.ActorID, not from the payload — same as
+		// applySlot/applyOption derive created_by/proposed_by. See CommentValues.
+		c = &Comment{ID: op.EntityID, TripID: op.TripID, AuthorID: op.ActorID}
+		r.Comments[op.EntityID] = c
+	}
+	if id, present, err := decodeIDPtr(fields, FieldSlotID); err != nil {
+		return err
+	} else if present && id != nil {
+		c.SlotID = *id
+	}
+	var str string
+	if present, err := decodeInto(fields, FieldBody, &str); err != nil {
+		return err
+	} else if present {
+		c.Body = str
+	}
+	var ts *time.Time
+	if present, err := decodeInto(fields, FieldDeletedAt, &ts); err != nil {
+		return err
+	} else if present {
+		c.DeletedAt = ts
 	}
 	return nil
 }

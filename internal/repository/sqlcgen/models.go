@@ -68,6 +68,17 @@ type BudgetSplit struct {
 	CreatedAt     time.Time
 }
 
+type Comment struct {
+	ID        uuid.UUID
+	SlotID    uuid.UUID
+	TripID    uuid.UUID
+	Body      string
+	AuthorID  *uuid.UUID
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	DeletedAt *time.Time
+}
+
 type Day struct {
 	ID        uuid.UUID
 	TripID    uuid.UUID

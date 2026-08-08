@@ -425,6 +425,21 @@ Stage 2 Slice 4 (sync close-out: session revocation + measured NFRs), approved 2
 | D96 | A revoked connection is **told why** (`session_revoked`) before the socket closes | Without it the client sees an ordinary disconnect, and an ordinary disconnect means "reconnect and resume" — so it would fetch a ticket, be refused, and have to infer from an auth failure what it could simply have been told. It is the only terminal error code in the protocol, and delivery is best-effort on a short drain: telling the client is a courtesy, the close is the guarantee |
 | D97 | `conn.close()` closes the **socket**, not just the signal channel | Found by the revocation tests and worth recording because it was a latent bug on every server-initiated close, not only this one. `readPump` parks in `ws.Read`, which does not watch the closed channel; closing the channel alone stopped the write pump and left the reader blocked, and since `run` waits for both before shutting down, the socket was never actually closed. A revoked connection sat fully alive. The same hole affected the slow-consumer drop — precisely the client least likely to send the frame that would have unblocked it |
 
+Stage 3 Slice 2 (comments — flat, per-slot discussion), approved 2026-08-08:
+
+| # | Decision | Rationale |
+|---|---|---|
+| D98 | Comments are **append-only, no merge, no edit** — the same treatment as attachments (D46/D84), not the field-level-LWW treatment slots and options get | A comment is an event (someone said something at a point in time), not a mutable shared value. Two concurrent comments never conflict — they are just two rows. The vocabulary is `comment.create.v1` / `comment.delete.v1` only; there is no `comment.edit.v1`, matching D46's "you replace one, you do not edit it" verbatim |
+| D99 | Comments carry **no version column**, for the same reason attachments have none | There is no edit verb, so there is no concurrency story to protect. `CommentPayload` passes `version=0` explicitly rather than omitting it, keeping "nothing to version" visible in the log the way `AttachmentPayload` does |
+| D100 | Comment delete is **author-only**, not capability-gated | The one deliberate departure from every other delete path in this codebase — slots, options and attachments are capability-gated only, because they are shared planning artifacts an editor may prune. A comment is a personal utterance with no precedent to copy, so the more conservative reading was chosen: the author can delete their own comment, nobody else can, not even the trip owner. Enforced in `CommentService.Delete`, not in SQL — no constraint can express "the deleter must equal author_id" |
+| D101 | Comments attach to exactly **one slot**, flat (no `parent_comment_id`), ordered by `(created_at, id)` | Matches where collaborative decision-making actually concentrates — the voting UI's shape — rather than a trip-wide thread or a nested-reply structure neither the product nor this slice asked for. Composite FK `(slot_id, trip_id) -> slots(id, trip_id)`, the same pattern as `slot_options_slot_fk`, makes "comment on another trip's slot" unrepresentable |
+| D102 | `author_id` is **derived from `op.ActorID` at write and fold time, never carried as a wire field** | The server ignores any author a client might supply anyway — `CommentService.Create` always uses the authenticated actor's own id — so putting it in the field mask would require a client to send a value with no effect and the server to decode and discard it. Matches how `applySlot`/`applyOption` derive `created_by`/`proposed_by` from `op.ActorID` rather than the payload — attachments' `uploaded_by` is the one precedent that DOES carry it as a payload field, but attachments never go through WS intent decoding at all (D86), so the question of trusting a client-supplied value never arose for them. **Found the hard way**: the first version of this slice put `author_id` in the total mask without adding a matching field to `intentValues`, and the engine's `DisallowUnknownFields()` decoder (deliberately strict — a typo'd field must not silently no-op) rejected every WS-submitted comment with `validation_failed`. Adding the field to `intentValues` would have fixed the symptom while leaving the actual problem: a client-supplied value the server was always going to discard. Removing `author_id` from the vocabulary entirely was the correct fix |
+| D103 | Comments are **WS-native**, unlike attachments (D86) | An upload needs a presign exchange a WebSocket frame cannot express; a comment is just text. `comment.create.v1`/`comment.delete.v1` get the ordinary create/delete dispatch in `internal/syncengine`, the same as votes and slots, so a comment posted by one client reaches every other subscribed client live rather than only through a REST-triggered broadcast |
+
+Also found while wiring this slice, unrelated to comments themselves but caught in the same code path: `cmd/api/main.go` declared `syncengine.Services.Budget` but never set it in the `Services{}` literal — a real client submitting `budget.set.v1`/`budget.delete.v1` over the socket in the deployed binary would nil-panic. Fixed alongside adding `Comments` to the same literal, and closed properly as D104 below.
+
+| D104 | `cmd/api`'s `syncengine.Services` construction is pulled into a named function (`newSyncEngineServices`) with a **reflection-based test asserting every returned field is non-nil**, called with distinct sentinel values | This is a different failure shape from every entry in the "standing principle" section above, and worth distinguishing rather than filing alongside them: those are tests whose ASSERTION was wrong (measuring something narrower than its name claimed). This was a code path with **no test on it at all** — `tests/stack_test.go` builds its own hand-written copy of the same `syncengine.Services{}` literal for the full-stack suite, and the two had already drifted (stack_test.go had `Budget` correctly wired; `main.go` did not) before anyone noticed. Extracting the literal into a function does not, by itself, stop a second hand-written copy from drifting the same way — the test is what closes that, because it calls the EXACT function `run()` calls rather than a re-implementation, and fails if anything it returns is nil. Verified against the actual historical bug: reverting `newSyncEngineServices`'s `Budget` parameter to a literal `nil` fails the test with the same nil-panic-in-production message the real bug would have produced |
+
 ---
 
 ## Build order
@@ -536,7 +551,38 @@ Stage 2 Slice 4 (sync close-out: session revocation + measured NFRs), approved 2
       reconnect + resync of 200 missed operations in ≈40ms against a 2s target. See
       *Non-functional targets* above, including the caveat about what single-machine figures
       are and are not worth.
-- **Stage 3 — Collaboration UX** ⬜: rich presence, threaded comments, voting UI, optimistic UI.
+- **Stage 3 — Collaboration UX** 🚧 in progress. No frontend existed before this stage — it is
+  built directly against the already-complete Stage 1/2 backend.
+  - ✅ Slice 1: presence + voting UI. `web/` scaffolded (Next.js App Router, TypeScript). Trip-
+    level presence (confirmed against the hub's actual granularity — no per-slot tracking
+    exists, so none was built) via a framework-agnostic WS client (`web/lib/socket.ts`).
+    Voting UI casts/retracts over `vote.set.v1` per spec, not REST, and shows the resolved
+    `selected_option_id` distinctly from the raw tally (D41). Found and fixed two real bugs
+    while wiring: a missing `PUT` in the backend's CORS allowed-methods list, and a duplicate
+    WS subscribe frame in the client that was corrupting presence server-side. 5 component
+    tests + 1 real two-browser Playwright e2e against the full real stack (Postgres, Redis,
+    Mailpit, `go run ./cmd/api`, `next dev`) — no mocks.
+  - ✅ Slice 2: comments (flat, per-slot, append-only — D98–D103) + optimistic reconciliation.
+    New backend surface built for it: migration 000005, `internal/domain/comment.go` +
+    op vocabulary (`comment.create.v1`/`comment.delete.v1`, WS-native unlike attachments),
+    repository, `CommentService` (the one delete path in the service layer that is
+    author-gated rather than capability-gated), HTTP routes, sync-engine dispatch. Comments
+    UI posts/deletes optimistically — the row renders under its final id immediately (D4) and
+    reconciles when the op broadcast for that id arrives, rolling back on rejection. Found and
+    fixed two more real bugs: `author_id` was briefly a wire field the server would decode and
+    then ignore, rejected by the engine's strict decoder until removed from the vocabulary
+    (D102); and `cmd/api/main.go` had never actually wired `Budget` into `syncengine.Services`
+    despite declaring the field, a latent nil-panic on any real `budget.set.v1` WS op that the
+    test suite's own wiring never exercised — closed properly as D104, with a test on the
+    actual construction path rather than a narrative note. Backend: repository/service/domain
+    tests plus two
+    full-stack tests (`tests/comments_api_test.go`) covering REST authz and WS live delivery +
+    fold consistency. Frontend: 8 component tests plus the same e2e page extended with a Part C
+    proving a comment posted by one client appears live on a second client's screen, and that
+    the author-only delete control does not even render for a non-author.
+  - ➡️ Remaining: threaded/richer collaboration surface (if scoped later), day/slot/option CRUD
+    UI (out of scope so far — fixtures create that state directly via the REST API), demo
+    polish items below.
 - **Stage 4 — Demo polish** ⬜: intentional UI, seed script, health/ready/live endpoints, deploy.
 
 ### Product modes (context; do not build ahead)

@@ -28,6 +28,7 @@ type repos struct {
 	votes       *VoteRepository
 	budget      *BudgetRepository
 	attachments *AttachmentRepository
+	comments    *CommentRepository
 	tx          *TxManager
 }
 
@@ -45,6 +46,7 @@ func newRepos() repos {
 		votes:       NewVoteRepository(testPool),
 		budget:      NewBudgetRepository(testPool),
 		attachments: NewAttachmentRepository(testPool),
+		comments:    NewCommentRepository(testPool),
 		tx:          NewTxManager(testPool),
 	}
 }
@@ -181,6 +183,22 @@ func makeOption(t *testing.T, ctx context.Context, r repos, slot *domain.Slot, t
 		t.Fatalf("creating option %q: %v", title, err)
 	}
 	return o
+}
+
+// makeComment posts a comment on a slot, authored by the given user.
+func makeComment(t *testing.T, ctx context.Context, r repos, slot *domain.Slot, author *domain.User, body string) *domain.Comment {
+	t.Helper()
+	c := &domain.Comment{
+		ID:       domain.NewID(),
+		SlotID:   slot.ID,
+		TripID:   slot.TripID,
+		Body:     body,
+		AuthorID: &author.ID,
+	}
+	if err := r.comments.Create(ctx, c); err != nil {
+		t.Fatalf("creating comment %q: %v", body, err)
+	}
+	return c
 }
 
 func listBucket(ctx context.Context, r repos, tripID domain.ID, dayID *domain.ID) ([]*domain.Slot, error) {

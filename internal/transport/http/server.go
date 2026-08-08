@@ -40,17 +40,18 @@ type RouterConfig struct {
 
 // Deps are the handlers and services a router needs.
 type Deps struct {
-	Auth    *service.AuthService
-	Trips   *service.TripService
-	Members *service.MembershipService
-	Days    *service.DayService
-	Slots   *service.SlotService
-	Options *service.SlotOptionService
-	Votes   *service.VoteService
-	Budget  *service.BudgetService
-	Files   *service.AttachmentService
-	Logger  *slog.Logger
-	Config  RouterConfig
+	Auth     *service.AuthService
+	Trips    *service.TripService
+	Members  *service.MembershipService
+	Days     *service.DayService
+	Slots    *service.SlotService
+	Options  *service.SlotOptionService
+	Votes    *service.VoteService
+	Comments *service.CommentService
+	Budget   *service.BudgetService
+	Files    *service.AttachmentService
+	Logger   *slog.Logger
+	Config   RouterConfig
 
 	// WS mounts the sync transport. Nil leaves the API REST-only, which is what the auth and
 	// planning API tests want — and is a useful property in itself: every write still reaches
@@ -164,6 +165,7 @@ func NewRouter(deps Deps) (http.Handler, func()) {
 			slotHandler := NewSlotHandler(deps.Slots, log)
 			optionHandler := NewSlotOptionHandler(deps.Options, log)
 			voteHandler := NewVoteHandler(deps.Votes, log)
+			commentHandler := NewCommentHandler(deps.Comments, log)
 
 			r.Post("/trips", tripHandler.Create)
 			r.Get("/trips", tripHandler.List)
@@ -205,6 +207,12 @@ func NewRouter(deps Deps) (http.Handler, func()) {
 				r.Get("/slots/{slotID}/votes", voteHandler.List)
 				r.Get("/slots/{slotID}/votes/tally", voteHandler.Tally)
 				r.Put("/slots/{slotID}/votes/me", voteHandler.Cast)
+
+				// Comments mount unconditionally, unlike the budget/attachment routes below —
+				// they have no external dependency (no object storage) to be optional about.
+				r.Get("/slots/{slotID}/comments", commentHandler.List)
+				r.Post("/slots/{slotID}/comments", commentHandler.Create)
+				r.Delete("/slots/{slotID}/comments/{commentID}", commentHandler.Delete)
 
 				// PUT, not PATCH: a budget entry is replaced whole, together with its complete
 				// split set (D44). Every other planning resource above is PATCH with a field

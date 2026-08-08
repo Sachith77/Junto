@@ -50,12 +50,13 @@ const (
 // a WebSocket write would be invisible to a resyncing client while every test still passed
 // (Rule 3, D1). The arch test forbids this package from importing internal/repository at all.
 type Services struct {
-	Trips   *service.TripService
-	Days    *service.DayService
-	Slots   *service.SlotService
-	Options *service.SlotOptionService
-	Votes   *service.VoteService
-	Budget  *service.BudgetService
+	Trips    *service.TripService
+	Days     *service.DayService
+	Slots    *service.SlotService
+	Options  *service.SlotOptionService
+	Votes    *service.VoteService
+	Comments *service.CommentService
+	Budget   *service.BudgetService
 }
 
 // EngineConfig is what an Engine needs.
@@ -353,6 +354,9 @@ type intentValues struct {
 	Date               *time.Time `json:"date"`
 	Label              *string    `json:"label"`
 
+	// Comments.
+	Body *string `json:"body"`
+
 	// Budget. Splits is a POINTER TO A SLICE so that "no splits key" and "an empty split set"
 	// stay distinguishable — the same reason every other field here is a pointer. For the
 	// budget it matters more than usual: an empty set means "nobody has split this", and
@@ -424,6 +428,13 @@ func (e *Engine) dispatch(ctx context.Context, in Intent) error {
 
 	case domain.OpVoteSet:
 		return e.voteSet(ctx, in, v)
+
+	// Comments are WS-native, unlike attachments below — no presign exchange to gate behind
+	// REST-only, so they get a real create/delete dispatch like slots/options/votes.
+	case domain.OpCommentCreate:
+		return e.commentCreate(ctx, in, v)
+	case domain.OpCommentDelete:
+		return e.services.Comments.Delete(ctx, in.TripID, in.ActorID, in.EntityID)
 
 	case domain.OpBudgetSet:
 		return e.budgetSet(ctx, in, v)

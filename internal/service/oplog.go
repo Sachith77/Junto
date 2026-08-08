@@ -189,6 +189,20 @@ func (r *recorder) attachment(ctx context.Context, kind domain.OpKind, a *domain
 	return r.record(ctx, kind, a.ID, mask, payload)
 }
 
+// comment records a comment create or delete.
+//
+// Same shape as attachment: no merge, no version, the operation exists purely so an offline
+// member learns about a new comment through the same replay path as everything else (D46/D84
+// -style reasoning, applied to the new entity per the Stage 3 Slice 2 decision).
+func (r *recorder) comment(ctx context.Context, kind domain.OpKind, c *domain.Comment, fields ...string) error {
+	mask := maskFor(kind, fields)
+	payload, err := domain.CommentPayload(c, mask)
+	if err != nil {
+		return err
+	}
+	return r.record(ctx, kind, c.ID, mask, payload)
+}
+
 func (r *recorder) vote(ctx context.Context, v *domain.Vote) error {
 	mask := maskFor(domain.OpVoteSet, nil)
 	payload, err := domain.VotePayload(v, mask)

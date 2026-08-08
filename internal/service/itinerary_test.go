@@ -302,6 +302,121 @@ func TestVoteListForSlotRequiresMembership(t *testing.T) {
 	}
 }
 
+// --- comments ---
+//
+// Append-only (no edit verb), and the one delete path in the whole service layer that is
+// author-gated rather than capability-gated — see CommentService.Delete's doc comment for why.
+
+func TestCommentCreateRequiresCapCommentAndValidatesSlotOwnership(t *testing.T) {
+	h := newPlanningHarness(t)
+	ctx := context.Background()
+	owner := h.makeUser(t, "owner@example.com")
+	viewer := h.makeUser(t, "viewer@example.com")
+	editor := h.makeUser(t, "editor@example.com")
+	trip := h.makeTrip(t, owner)
+	h.addMember(t, trip.ID, viewer, domain.RoleViewer)
+	h.addMember(t, trip.ID, editor, domain.RoleEditor)
+	slot, _ := h.slots.Create(ctx, trip.ID, owner.ID, CreateSlotInput{Kind: domain.SlotKindActivity, Title: "Beach day"})
+
+	if _, err := h.comments.Create(ctx, trip.ID, viewer.ID, slot.ID, CreateCommentInput{Body: "hi"}); !errors.Is(err, domain.ErrForbidden) {
+		t.Errorf("a viewer commenting must be forbidden, got %v", err)
+	}
+
+	comment, err := h.comments.Create(ctx, trip.ID, editor.ID, slot.ID, CreateCommentInput{Body: "Should we book the earlier flight?"})
+	if err != nil {
+		t.Fatalf("an editor commenting should succeed: %v", err)
+	}
+	if comment.AuthorID == nil || *comment.AuthorID != editor.ID {
+		t.Errorf("comment author = %v, want %v", comment.AuthorID, editor.ID)
+	}
+
+	// Cross-trip: the caller is a member of tripB (owner of both), passing the capability
+	// check — the trip-scoping guard is what has to catch a slot from the wrong trip.
+	tripB := h.makeTrip(t, owner)
+	if _, err := h.comments.Create(ctx, tripB.ID, owner.ID, slot.ID, CreateCommentInput{Body: "wrong trip"}); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("commenting on a slot through the wrong trip must be not-found, got %v", err)
+	}
+}
+
+func TestCommentListForSlotRequiresMembership(t *testing.T) {
+	h := newPlanningHarness(t)
+	ctx := context.Background()
+	owner := h.makeUser(t, "owner@example.com")
+	outsider := h.makeUser(t, "outsider@example.com")
+	trip := h.makeTrip(t, owner)
+	slot, _ := h.slots.Create(ctx, trip.ID, owner.ID, CreateSlotInput{Kind: domain.SlotKindActivity, Title: "Beach"})
+	if _, err := h.comments.Create(ctx, trip.ID, owner.ID, slot.ID, CreateCommentInput{Body: "First"}); err != nil {
+		t.Fatalf("commenting: %v", err)
+	}
+
+	comments, err := h.comments.ListForSlot(ctx, trip.ID, owner.ID, slot.ID)
+	if err != nil {
+		t.Fatalf("a member listing comments: %v", err)
+	}
+	if len(comments) != 1 {
+		t.Errorf("expected 1 comment, got %d", len(comments))
+	}
+
+	if _, err := h.comments.ListForSlot(ctx, trip.ID, outsider.ID, slot.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("a non-member listing comments must be not-found, got %v", err)
+	}
+}
+
+// TestCommentDeleteIsAuthorOnly is the one delete path in the whole service layer that is NOT
+// merely capability-gated — an editor, and even the trip OWNER, must not be able to delete
+// another member's comment. Only the author can.
+func TestCommentDeleteIsAuthorOnly(t *testing.T) {
+	h := newPlanningHarness(t)
+	ctx := context.Background()
+	owner := h.makeUser(t, "owner@example.com")
+	author := h.makeUser(t, "author@example.com")
+	trip := h.makeTrip(t, owner)
+	h.addMember(t, trip.ID, author, domain.RoleEditor)
+	slot, _ := h.slots.Create(ctx, trip.ID, owner.ID, CreateSlotInput{Kind: domain.SlotKindActivity, Title: "Beach"})
+	comment, err := h.comments.Create(ctx, trip.ID, author.ID, slot.ID, CreateCommentInput{Body: "I'll bring snacks"})
+	if err != nil {
+		t.Fatalf("commenting: %v", err)
+	}
+
+	// The OWNER of the trip — capability-wise the most privileged member there is — still
+	// cannot delete someone else's comment.
+	if err := h.comments.Delete(ctx, trip.ID, owner.ID, comment.ID); !errors.Is(err, domain.ErrForbidden) {
+		t.Errorf("the trip owner deleting another member's comment must be forbidden, got %v", err)
+	}
+
+	list, err := h.comments.ListForSlot(ctx, trip.ID, owner.ID, slot.ID)
+	if err != nil || len(list) != 1 {
+		t.Fatalf("the comment must survive the rejected delete: list=%v err=%v", list, err)
+	}
+
+	if err := h.comments.Delete(ctx, trip.ID, author.ID, comment.ID); err != nil {
+		t.Fatalf("the author deleting their own comment should succeed: %v", err)
+	}
+	list, err = h.comments.ListForSlot(ctx, trip.ID, owner.ID, slot.ID)
+	if err != nil || len(list) != 0 {
+		t.Errorf("the comment must be gone after the author deletes it: list=%v err=%v", list, err)
+	}
+}
+
+// TestCommentFromAnotherTripsSlotIsRejected mirrors TestVoteFromAnotherTripsSlotIsRejected for
+// the delete path's trip-scoping guard.
+func TestCommentFromAnotherTripsSlotIsRejected(t *testing.T) {
+	h := newPlanningHarness(t)
+	ctx := context.Background()
+	owner := h.makeUser(t, "owner@example.com")
+	tripA := h.makeTrip(t, owner)
+	tripB := h.makeTrip(t, owner)
+	slotInA, _ := h.slots.Create(ctx, tripA.ID, owner.ID, CreateSlotInput{Kind: domain.SlotKindNote, Title: "In A"})
+	comment, err := h.comments.Create(ctx, tripA.ID, owner.ID, slotInA.ID, CreateCommentInput{Body: "hi"})
+	if err != nil {
+		t.Fatalf("commenting: %v", err)
+	}
+
+	if err := h.comments.Delete(ctx, tripB.ID, owner.ID, comment.ID); !errors.Is(err, domain.ErrNotFound) {
+		t.Errorf("deleting a comment through the wrong trip must be not-found, got %v", err)
+	}
+}
+
 // --- day list / move / delete ---
 
 func TestDayListForTripRequiresMembership(t *testing.T) {

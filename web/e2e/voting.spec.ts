@@ -28,7 +28,7 @@ async function loginViaUi(page: Page, user: FixtureUser) {
   await expect(page).toHaveURL(/\/trips$/);
 }
 
-test("presence shows both members, and a vote cast by one client updates a second client live", async ({
+test("presence shows both members, and votes/comments cast by one client update a second client live", async ({
   browser,
 }) => {
   // Fixture setup makes several auth calls that share the API's strict per-IP rate limit
@@ -80,6 +80,31 @@ test("presence shows both members, and a vote cast by one client updates a secon
   // Retraction propagates live too, and maps to option_id = NULL (D42) rather than a delete.
   await memberOptionA.getByTestId("retract-vote").click();
   await expect(ownerOptionA.getByTestId("vote-count")).toHaveText("0 votes", { timeout: 10_000 });
+
+  // Part C: comments, proven live over the SAME sockets — no extra fixture, no extra
+  // rate-limited signup. The member posts a comment; the OWNER's screen must show it without
+  // a reload, and the member's own copy must have already reconciled out of its pending state
+  // by the time the owner sees it (comment.create.v1 is WS-native, D103, so both are driven by
+  // the same op broadcast).
+  const ownerComments = ownerPage.getByTestId("comments-list");
+  const memberComments = memberPage.getByTestId("comments-list");
+
+  await memberComments.getByPlaceholder("Add a comment").fill("Should we book the early flight?");
+  await memberComments.getByTestId("post-comment").click();
+
+  const memberComment = memberComments.getByTestId("comment").filter({ hasText: "Should we book the early flight?" });
+  await expect(memberComment).toHaveAttribute("data-pending", "false", { timeout: 10_000 });
+
+  const ownerComment = ownerComments.getByTestId("comment").filter({ hasText: "Should we book the early flight?" });
+  await expect(ownerComment).toBeVisible({ timeout: 10_000 });
+
+  // Author-only delete (D100): the OWNER — the most privileged member on this trip — must not
+  // even see a delete control on the member's comment.
+  await expect(ownerComment.getByTestId("delete-comment")).toHaveCount(0);
+
+  // The member deletes their own comment; it must disappear from the owner's screen live too.
+  await memberComment.getByTestId("delete-comment").click();
+  await expect(ownerComment).toHaveCount(0, { timeout: 10_000 });
 
   await ownerContext.close();
   await memberContext.close();

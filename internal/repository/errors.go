@@ -136,6 +136,16 @@ var constraintViolations = map[string]domain.FieldViolation{
 		Message: "that storage object is already attached",
 	},
 
+	// Comments.
+	"comments_slot_fk": {
+		Field: "slot_id", Code: "slot_not_in_trip",
+		Message: "the slot does not belong to this trip",
+	},
+	"comments_body_len": {
+		Field: "body", Code: "invalid_length",
+		Message: "comment must be between 1 and 4000 characters",
+	},
+
 	"trips_base_currency": {
 		Field: "base_currency", Code: "invalid_currency",
 		Message: "currency must be a three-letter ISO 4217 code",

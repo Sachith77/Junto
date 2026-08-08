@@ -174,6 +174,27 @@ func (e *Engine) optionEdit(ctx context.Context, in Intent, v intentValues) erro
 	return err
 }
 
+// commentCreate is the whole comment vocabulary's create half. Unlike attachments, comments
+// have no external dependency to gate behind REST-only (D86 does not apply here) — a comment
+// is just text, so it goes through the sync engine like any other real create op, with the
+// client's chosen entity id becoming the real row id (D4), same as slotCreate/optionCreate.
+func (e *Engine) commentCreate(ctx context.Context, in Intent, v intentValues) error {
+	slotID, err := parseOptionalID("slot_id", v.SlotID)
+	if err != nil {
+		return err
+	}
+	if slotID == nil {
+		ve := &domain.ValidationError{}
+		ve.Add("slot_id", "required", "a comment must name its slot")
+		return ve
+	}
+	_, err = e.services.Comments.Create(ctx, in.TripID, in.ActorID, *slotID, service.CreateCommentInput{
+		ID:   in.EntityID,
+		Body: deref(v.Body),
+	})
+	return err
+}
+
 // voteSet is the whole vote vocabulary.
 //
 // Note what is absent: no version, no create/delete distinction, no tombstone handling. A vote

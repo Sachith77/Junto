@@ -86,6 +86,16 @@ export interface Vote {
   updated_at: string;
 }
 
+// Comments are append-only (create + author-only delete, no edit — D98/D100), so there is no
+// version field: nothing here is ever field-mergeable, matching Attachment's shape.
+export interface Comment {
+  id: string;
+  slot_id: string;
+  body: string;
+  author_id?: string;
+  created_at: string;
+}
+
 // --- WebSocket wire protocol (internal/transport/ws/protocol.go) ---
 
 export interface OpFrame {

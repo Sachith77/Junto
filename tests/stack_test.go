@@ -65,12 +65,13 @@ type stack struct {
 	// rather than inferring it from a client that stopped receiving.
 	Connections *ws.Registry
 
-	OpLog   domain.OpLogRepository
-	Trips   domain.TripRepository
-	Slots   domain.SlotRepository
-	Options domain.SlotOptionRepository
-	Votes   domain.VoteRepository
-	Budget  domain.BudgetRepository
+	OpLog    domain.OpLogRepository
+	Trips    domain.TripRepository
+	Slots    domain.SlotRepository
+	Options  domain.SlotOptionRepository
+	Votes    domain.VoteRepository
+	Comments domain.CommentRepository
+	Budget   domain.BudgetRepository
 
 	// Attachments is the concrete type rather than the port, because these tests need
 	// ListForTrip — the read that lets an assertion compare the whole trip's attachments
@@ -147,6 +148,7 @@ func newStack(cfg stackConfig) (*stack, error) {
 		slots       = repository.NewSlotRepository(pool)
 		options     = repository.NewSlotOptionRepository(pool)
 		votes       = repository.NewVoteRepository(pool)
+		comments    = repository.NewCommentRepository(pool)
 		budget      = repository.NewBudgetRepository(pool)
 		attachments = repository.NewAttachmentRepository(pool)
 		ops         = repository.NewOpLogRepository(pool)
@@ -189,6 +191,10 @@ func newStack(cfg stackConfig) (*stack, error) {
 		Votes: votes, Slots: slots, Members: members, Trips: trips, Ops: ops, Tx: txm,
 		Pub: broker,
 	})
+	commentService := service.NewCommentService(service.CommentDeps{
+		Comments: comments, Slots: slots, Members: members, Trips: trips, Ops: ops, Tx: txm,
+		Pub: broker, Clock: domain.SystemClock{},
+	})
 	budgetService := service.NewBudgetService(service.BudgetDeps{
 		Budget: budget, Members: members, Trips: trips, Ops: ops, Tx: txm, Pub: broker,
 		Clock: domain.SystemClock{},
@@ -203,7 +209,8 @@ func newStack(cfg stackConfig) (*stack, error) {
 		Broker: broker,
 		Services: syncengine.Services{
 			Trips: tripService, Days: dayService, Slots: slotService,
-			Options: optionService, Votes: voteService, Budget: budgetService,
+			Options: optionService, Votes: voteService, Comments: commentService,
+			Budget: budgetService,
 		},
 		Ops: ops, Trips: trips, Logger: logger,
 		MaxResyncOps: cfg.MaxResyncOps,
@@ -212,7 +219,7 @@ func newStack(cfg stackConfig) (*stack, error) {
 	s := &stack{
 		Broker: broker, Auth: authService, Connections: registry,
 		OpLog: ops, Trips: trips, Slots: slots, Options: options, Votes: votes,
-		Budget: budget, Attachments: attachments, Storage: files,
+		Comments: comments, Budget: budget, Attachments: attachments, Storage: files,
 	}
 
 	brokerCtx, stopBroker := context.WithCancel(context.Background())
@@ -242,17 +249,18 @@ func newStack(cfg stackConfig) (*stack, error) {
 	permissive := middleware.RateLimitConfig{RequestsPerSecond: 10000, Burst: 10000, TTL: time.Minute}
 
 	router, cleanupRouter := juntohttp.NewRouter(juntohttp.Deps{
-		Auth:    authService,
-		Trips:   tripService,
-		Members: membershipService,
-		Days:    dayService,
-		Slots:   slotService,
-		Options: optionService,
-		Votes:   voteService,
-		Budget:  budgetService,
-		Files:   attachmentService,
-		WS:      wsHandlers,
-		Logger:  logger,
+		Auth:     authService,
+		Trips:    tripService,
+		Members:  membershipService,
+		Days:     dayService,
+		Slots:    slotService,
+		Options:  optionService,
+		Votes:    voteService,
+		Comments: commentService,
+		Budget:   budgetService,
+		Files:    attachmentService,
+		WS:       wsHandlers,
+		Logger:   logger,
 		Config: juntohttp.RouterConfig{
 			AllowedOrigins:   []string{"http://localhost:3000"},
 			SecureCookies:    false,
