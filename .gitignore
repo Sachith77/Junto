@@ -1,0 +1,36 @@
+# Secrets — .env.example is committed, .env is never
+.env
+.env.*
+!.env.example
+
+# Build output
+/bin/
+/dist/
+*.exe
+*.exe~
+
+# Test artifacts
+*.out
+coverage.*
+/tmp/
+
+# Frontend (Stage 3+)
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+next-env.d.ts
+/web/test-results/
+/web/playwright-report/
+/web/blob-report/
+/web/playwright/.cache/
+
+# Editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+
+# Claude Code — personal permission allowlist, not shared project config
+.claude/settings.local.json

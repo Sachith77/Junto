@@ -1,0 +1,46 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  enable:
+    - errcheck      # unchecked errors are the most common real bug class in Go
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - bodyclose     # leaked HTTP response bodies exhaust connections under load
+    - rowserrcheck  # pgx/sql rows.Err() is silently skippable and hides partial results
+    - sqlclosecheck
+    - contextcheck  # context must propagate; this project requires it end to end
+    - noctx         # no HTTP or DB call without a context
+    - errorlint     # catches == comparisons that should be errors.Is
+    - gosec
+    - misspell
+    - unconvert
+    - nilerr
+
+  settings:
+    errcheck:
+      # Deferred Close on a read-only resource is the one place ignoring an error is
+      # genuinely correct; everything else must be handled.
+      exclude-functions:
+        - (io.Closer).Close
+    gosec:
+      excludes:
+        # G404 (weak RNG) is flagged in tests that use math/rand for deterministic,
+        # reproducible property generation. Security-relevant randomness uses crypto/rand.
+        - G404
+
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

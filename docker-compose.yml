@@ -1,0 +1,102 @@
+name: junto
+
+services:
+  postgres:
+    # Pinned to 16: `ON DELETE SET NULL (column_list)` requires PG15+, and the
+    # items -> days composite FK depends on it. Do not float this tag.
+    image: postgres:16-alpine
+    container_name: junto-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: junto
+      POSTGRES_PASSWORD: junto_dev_password
+      POSTGRES_DB: junto
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+      # NOTE: database collation is deliberately left at the image default. Ordering of
+      # `position` keys is made deterministic per-column via `COLLATE "C"` in the schema
+      # rather than globally, so that lower()/upper() keep full Unicode semantics for
+      # emails and display names. See migrations/000002.
+    ports:
+      # Host port 5433, not 5432: the default is commonly occupied by another local
+      # Postgres, and colliding with an unrelated project's database is a bad first
+      # impression for anyone cloning this repo. Container-internal port is unchanged.
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U junto -d junto"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  mailpit:
+    # Catches every outbound email locally so verification / password-reset flows are
+    # testable end to end without a real SMTP provider. UI on :8025.
+    image: axllent/mailpit:latest
+    container_name: junto-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+
+  minio:
+    # S3-compatible object storage for attachments. The point of using MinIO locally is that
+    # the SAME presigning and PUT flow works unchanged against real S3 or Cloudflare R2 in
+    # production — the adapter changes an endpoint, not a code path.
+    image: minio/minio:latest
+    container_name: junto-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: junto
+      MINIO_ROOT_PASSWORD: junto_dev_password
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    # Cross-instance operation fan-out and shared WebSocket handshake tickets (Stage 2,
+    # Slice 2). Arrived when there was something for it to do, not before.
+    #
+    # 7.x for GETDEL, which is what makes a handshake ticket single-use across instances in
+    # one atomic server-side operation rather than a check-then-act race. 6.2 would also do;
+    # pinned to 7 to match what the two-instance test runs against.
+    image: redis:7-alpine
+    container_name: junto-redis
+    restart: unless-stopped
+    # No persistence. Everything in here is cache: a 30-second ticket, and a fan-out message
+    # whose durable copy is already committed to trip_ops. Losing the lot on a restart costs
+    # one extra round trip per reconnecting client.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      # Host port 6380 for the same reason Postgres is on 5433: 6379 is commonly taken by
+      # another local Redis, and colliding with an unrelated project is a bad first impression.
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+# The bucket is created by the storage adapter at startup if it is missing, rather than by an
+# `mc` init container: one fewer moving part in Compose, and the same code path works against
+# a real S3 bucket that already exists.
+
+volumes:
+  postgres_data:
+    name: junto_postgres_data
+  minio_data:
+    name: junto_minio_data
