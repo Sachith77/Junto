@@ -13,6 +13,8 @@ export async function createTrip(input: {
   name: string;
   description: string;
   timeZone: string;
+  startDate?: string | null;
+  endDate?: string | null;
 }): Promise<Trip> {
   return apiFetch<Trip>("/api/v1/trips", {
     method: "POST",
@@ -20,8 +22,11 @@ export async function createTrip(input: {
       name: input.name,
       description: input.description,
       time_zone: input.timeZone,
-      start_date: null,
-      end_date: null,
+      // The API takes RFC3339; a date input gives "2026-09-14". Sent as UTC
+      // midnight because these are calendar dates, not instants (D7's reasoning
+      // one level up) — formatDateRange reads the date part back the same way.
+      start_date: input.startDate ? `${input.startDate}T00:00:00Z` : null,
+      end_date: input.endDate ? `${input.endDate}T00:00:00Z` : null,
       version: 0,
     },
   });

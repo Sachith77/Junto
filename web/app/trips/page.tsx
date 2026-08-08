@@ -1,83 +1,117 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { createTrip, listTrips } from "@/lib/api/trips";
+import { useRouter } from "next/navigation";
+import { listTrips } from "@/lib/api/trips";
 import { useAuth } from "@/context/AuthContext";
+import { ShellHeader } from "@/components/ShellHeader";
+import { TripCard } from "@/components/TripCard";
+import { ButtonLink } from "@/components/ui/Button";
+import { LoadingRegion, TripCardSkeleton } from "@/components/ui/Skeleton";
+import { Media } from "@/components/ui/Media";
 import type { Trip } from "@/lib/types";
 
+type Load = { state: "loading" } | { state: "ready"; trips: Trip[] } | { state: "error" };
+
 export default function TripsPage() {
-  const { status, user, logout } = useAuth();
+  const { status } = useAuth();
   const router = useRouter();
-  const [trips, setTrips] = useState<Trip[]>([]);
-  const [name, setName] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [load, setLoad] = useState<Load>({ state: "loading" });
 
   useEffect(() => {
     if (status === "anonymous") router.replace("/login");
   }, [status, router]);
 
   useEffect(() => {
-    if (status === "authenticated") void listTrips().then(setTrips);
+    if (status !== "authenticated") return;
+    let cancelled = false;
+    listTrips()
+      .then((trips) => !cancelled && setLoad({ state: "ready", trips }))
+      .catch(() => !cancelled && setLoad({ state: "error" }));
+    return () => {
+      cancelled = true;
+    };
   }, [status]);
-
-  const onCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    setCreating(true);
-    try {
-      const trip = await createTrip({ name, description: "", timeZone: "UTC" });
-      setTrips((prev) => [trip, ...prev]);
-      setName("");
-    } finally {
-      setCreating(false);
-    }
-  };
 
   if (status !== "authenticated") return null;
 
   return (
-    <main className="mx-auto w-full max-w-2xl flex-1 p-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Trips</h1>
-        <div className="flex items-center gap-3 text-sm text-neutral-500">
-          <span>{user?.display_name}</span>
-          <button onClick={() => void logout()} className="underline">
-            Log out
-          </button>
+    <div className="flex min-h-full flex-1 flex-col">
+      <ShellHeader>
+        <ButtonLink href="/trips/new" variant="primary" size="sm">
+          New trip
+        </ButtonLink>
+      </ShellHeader>
+
+      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-12 sm:px-8 sm:py-16">
+        <div className="mb-10">
+          <h1 className="font-display text-display-xl text-fg">Your trips</h1>
+          <p className="mt-2 text-ui-lg text-fg-muted">
+            Pick up where the group left off.
+          </p>
+        </div>
+
+        {load.state === "loading" && (
+          <>
+            <LoadingRegion label="Loading your trips" />
+            <div className="grid gap-6 sm:grid-cols-2">
+              <TripCardSkeleton />
+              <TripCardSkeleton />
+            </div>
+          </>
+        )}
+
+        {load.state === "error" && (
+          <div className="rounded-card border border-critical-600/25 bg-critical-50 px-6 py-5">
+            <p className="text-ui-md font-medium text-critical-700">
+              We couldn&rsquo;t load your trips.
+            </p>
+            <p className="mt-1 text-ui-sm text-fg-muted">
+              Check that the API is running, then reload the page.
+            </p>
+          </div>
+        )}
+
+        {load.state === "ready" && load.trips.length === 0 && <EmptyTrips />}
+
+        {load.state === "ready" && load.trips.length > 0 && (
+          <div className="grid gap-6 sm:grid-cols-2">
+            {load.trips.map((trip, i) => (
+              // The first two get the taller treatment — an editorial grid should
+              // have a focal point rather than reading as a uniform contact sheet.
+              <TripCard key={trip.id} trip={trip} priority={i < 2} />
+            ))}
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+/** Intentional empty state, not an absence. It gets the same cinematic treatment
+ *  a real trip card would, so a new account's first screen still looks like the
+ *  product rather than like something failed to load. */
+function EmptyTrips() {
+  return (
+    <Media
+      seed="alpine"
+      className="rounded-card shadow-lg"
+      data-testid="trips-empty"
+    >
+      <div className="relative px-8 py-20 text-center sm:px-16 sm:py-24">
+        <h2 className="font-display text-display-lg text-fg-on-media">
+          No trips yet
+        </h2>
+        <p className="mx-auto mt-3 max-w-md text-ui-lg text-fg-on-media-dim">
+          Start one, invite the group, and let everyone throw ideas at it. Nothing gets planned
+          alone.
+        </p>
+        <div className="mt-8 flex justify-center">
+          <ButtonLink href="/trips/new" variant="primary" size="lg">
+            Create your first trip
+          </ButtonLink>
         </div>
       </div>
-
-      <form onSubmit={onCreate} className="mb-6 flex gap-2">
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="New trip name"
-          className="flex-1 rounded-md border border-neutral-300 px-3 py-2"
-        />
-        <button
-          type="submit"
-          disabled={creating}
-          className="rounded-md bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
-        >
-          Create
-        </button>
-      </form>
-
-      <ul className="space-y-2">
-        {trips.map((trip) => (
-          <li key={trip.id}>
-            <Link
-              href={`/trips/${trip.id}`}
-              className="block rounded-md border border-neutral-200 bg-white px-4 py-3 hover:border-neutral-300"
-            >
-              {trip.name}
-            </Link>
-          </li>
-        ))}
-        {trips.length === 0 && <p className="text-neutral-400">No trips yet.</p>}
-      </ul>
-    </main>
+    </Media>
   );
 }

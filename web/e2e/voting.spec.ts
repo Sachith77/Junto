@@ -48,14 +48,20 @@ test("presence shows both members, and votes/comments cast by one client update 
   await loginViaUi(ownerPage, owner);
   await loginViaUi(memberPage, member);
 
-  // A client-side <Link> click, not page.goto() — a hard navigation would remount AuthContext
+  // Client-side <Link> clicks, not page.goto() — a hard navigation would remount AuthContext
   // and cost another call against the auth rate limit for no reason (D30: the access token is
   // memory-only, so a hard reload legitimately needs /auth/refresh; a client transition does
   // not, since the in-memory token is still there).
-  await ownerPage.locator(`a[href="/trips/${fixture.tripId}"]`).click();
-  await memberPage.locator(`a[href="/trips/${fixture.tripId}"]`).click();
-  await ownerPage.waitForURL(`/trips/${fixture.tripId}`);
-  await memberPage.waitForURL(`/trips/${fixture.tripId}`);
+  //
+  // Two hops now, not one: Group A made /trips/[id] the three-mode picker and moved Plan mode
+  // to /trips/[id]/plan. Walking the real path (trip card -> Plan card) rather than deep-linking
+  // means this test also covers that the outer shell actually reaches the inner app.
+  for (const page of [ownerPage, memberPage]) {
+    await page.locator(`a[href="/trips/${fixture.tripId}"]`).click();
+    await page.waitForURL(`/trips/${fixture.tripId}`);
+    await page.locator('[data-testid="mode-card"][data-mode="plan"]').click();
+    await page.waitForURL(`/trips/${fixture.tripId}/plan`);
+  }
 
   // Part A: presence. Both sockets are subscribed once each page's avatar stack shows both
   // members — this is the live WS presence signal, not a static member list.
