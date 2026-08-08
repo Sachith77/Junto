@@ -7,9 +7,10 @@ export default defineConfig({
   workers: 1,
   reporter: [["list"]],
   use: {
-    // Port 3000 is occupied by an unrelated process on this machine — the dev server for this
-    // app runs on 3001 (see README): `npm run dev -- -p 3001`.
-    baseURL: "http://localhost:3001",
+    // Next's default port, which is also the API's default CORS origin
+    // (configs/config.go) — so `npm run dev` and `go run ./cmd/api` agree with
+    // no extra configuration on either side.
+    baseURL: "http://localhost:3000",
     trace: "retain-on-failure",
   },
   // The Next dev server and the Go API are started separately (see README) — both must

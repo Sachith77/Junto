@@ -1,4 +1,4 @@
-import { SlotList } from "@/components/SlotList";
+import { ModePicker } from "@/components/ModePicker";
 
 export default async function TripPage({
   params,
@@ -6,5 +6,5 @@ export default async function TripPage({
   params: Promise<{ tripId: string }>;
 }) {
   const { tripId } = await params;
-  return <SlotList tripId={tripId} />;
+  return <ModePicker tripId={tripId} />;
 }

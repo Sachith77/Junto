@@ -40,23 +40,50 @@ interface RequestOptions {
 // Refresh rides the HttpOnly cookie (D30) — the body is empty, the cookie does the work.
 let refreshInFlight: Promise<boolean> | null = null;
 
+const REFRESH_ATTEMPTS = 3;
+const MAX_BACKOFF_MS = 12_000;
+
 async function refreshAccessToken(): Promise<boolean> {
   if (!refreshInFlight) {
     refreshInFlight = (async () => {
       try {
-        const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
-          method: "POST",
-          credentials: "include",
-        });
-        if (!res.ok) {
-          setAccessToken(null);
-          return false;
+        for (let attempt = 0; attempt < REFRESH_ATTEMPTS; attempt++) {
+          const res = await fetch(`${API_URL}/api/v1/auth/refresh`, {
+            method: "POST",
+            credentials: "include",
+          });
+
+          if (res.ok) {
+            const body = (await res.json()) as Envelope<{ access_token: string }>;
+            setAccessToken(body.data.access_token);
+            return true;
+          }
+
+          // Only 401/403 means "you are genuinely not signed in". Everything else
+          // — a 429 from the auth limiter, a 5xx, an API restart — is TRANSIENT,
+          // and treating it as a logout signs a user out for being unlucky.
+          //
+          // This was a real bug, not a hypothetical: the access token is
+          // memory-only by design (D30), so every hard reload needs a refresh;
+          // reloading while the strict auth limiter (D35/D36) was throttling
+          // bounced a perfectly valid session to /login.
+          if (res.status === 401 || res.status === 403) {
+            setAccessToken(null);
+            return false;
+          }
+          if (res.status !== 429 && res.status < 500) return false;
+
+          const retryAfter = Number(res.headers.get("retry-after"));
+          const waitMs = Math.min(
+            Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 800 * 2 ** attempt,
+            MAX_BACKOFF_MS
+          );
+          await new Promise((r) => setTimeout(r, waitMs));
         }
-        const body = (await res.json()) as Envelope<{ access_token: string }>;
-        setAccessToken(body.data.access_token);
-        return true;
+        return false;
       } catch {
-        setAccessToken(null);
+        // Network error — the server may simply be down. Keep whatever token is
+        // held rather than destroying a session over a dropped connection.
         return false;
       } finally {
         refreshInFlight = null;
