@@ -43,6 +43,9 @@ INSERT INTO slot_options (id, slot_id, trip_id, title) VALUES
   ('eeeeeeee-0000-7000-8000-000000000002','dddddddd-0000-7000-8000-000000000001','aaaaaaaa-0000-7000-8000-000000000001','Airbnb in Anjuna'),
   ('eeeeeeee-0000-7000-8000-000000000003','dddddddd-0000-7000-8000-000000000002','aaaaaaaa-0000-7000-8000-000000000001','Beach day');
 
+INSERT INTO comments (id, slot_id, trip_id, body, author_id) VALUES
+  ('ffffffff-0000-7000-8000-000000000001','dddddddd-0000-7000-8000-000000000001','aaaaaaaa-0000-7000-8000-000000000001','Great pick!','11111111-1111-7111-8111-111111111111');
+
 -- ---------- 1. exactly one owner per trip ----------
 DO $$ BEGIN
   BEGIN
@@ -90,6 +93,17 @@ DO $$ DECLARE sel uuid; BEGIN
     RAISE EXCEPTION 'FAIL 2d: a valid selection did not persist';
   END IF;
   RAISE NOTICE 'PASS 2d: a valid selection persists';
+END $$;
+
+DO $$ BEGIN
+  -- 2e. A comment cannot claim a trip its slot does not belong to — same composite-FK shape
+  --     as 2b, one level further out (comments -> slots, not comments -> slot_options).
+  BEGIN
+    INSERT INTO comments (slot_id, trip_id, body)
+      VALUES ('dddddddd-0000-7000-8000-000000000001','aaaaaaaa-0000-7000-8000-000000000002','Wrong trip comment');
+    RAISE EXCEPTION 'FAIL 2e: cross-trip comment was allowed';
+  EXCEPTION WHEN foreign_key_violation THEN RAISE NOTICE 'PASS 2e: cross-trip comment rejected';
+  END;
 END $$;
 
 -- ---------- 3. case-insensitive email uniqueness ----------
@@ -177,6 +191,13 @@ DO $$ BEGIN
       VALUES ('dddddddd-0000-7000-8000-000000000001','aaaaaaaa-0000-7000-8000-000000000001','Negative cost', -1);
     RAISE EXCEPTION 'FAIL 6h: a negative estimate was allowed';
   EXCEPTION WHEN check_violation THEN RAISE NOTICE 'PASS 6h: negative estimate rejected';
+  END;
+  -- Comments are append-only but not empty-only.
+  BEGIN
+    INSERT INTO comments (slot_id, trip_id, body)
+      VALUES ('dddddddd-0000-7000-8000-000000000001','aaaaaaaa-0000-7000-8000-000000000001','');
+    RAISE EXCEPTION 'FAIL 6i: an empty comment body was allowed';
+  EXCEPTION WHEN check_violation THEN RAISE NOTICE 'PASS 6i: empty comment body rejected';
   END;
 END $$;
 
@@ -379,6 +400,7 @@ DECLARE
     'budget_entries.paid_by',        -- same
     'budget_entries.created_by',     -- same
     'attachments.uploaded_by',       -- same
+    'comments.author_id',            -- same
     -- trip_ops is the hottest INSERT path in the system: one row per mutation, forever.
     -- Indexing actor_id would tax every single write to speed up a hard user erasure, which
     -- is a rare, offline, human-initiated operation that may scan. Note trip_ops.trip_id IS

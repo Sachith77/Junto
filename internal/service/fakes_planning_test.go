@@ -831,6 +831,69 @@ func (r *fakeVotes) Tally(_ context.Context, slotID domain.ID) ([]domain.VoteTal
 	return out, nil
 }
 
+// --- comments ---
+
+// fakeComments reproduces the append-only shape: create and soft-delete only, no version, no
+// update — the same treatment as fakeAttachments, decided before CommentService was written.
+type fakeComments struct {
+	mu   sync.Mutex
+	byID map[domain.ID]*domain.Comment
+}
+
+func newFakeComments() *fakeComments {
+	return &fakeComments{byID: map[domain.ID]*domain.Comment{}}
+}
+
+func (r *fakeComments) Create(_ context.Context, c *domain.Comment) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if _, exists := r.byID[c.ID]; exists {
+		return domain.ErrAlreadyExists
+	}
+	now := time.Now().UTC()
+	c.CreatedAt, c.UpdatedAt = now, now
+	clone := *c
+	r.byID[c.ID] = &clone
+	return nil
+}
+
+func (r *fakeComments) GetByID(_ context.Context, id domain.ID) (*domain.Comment, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.byID[id]
+	if !ok || c.DeletedAt != nil {
+		return nil, domain.ErrNotFound
+	}
+	clone := *c
+	return &clone, nil
+}
+
+func (r *fakeComments) ListForSlot(_ context.Context, slotID domain.ID) ([]*domain.Comment, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*domain.Comment, 0)
+	for _, c := range r.byID {
+		if c.SlotID == slotID && c.DeletedAt == nil {
+			clone := *c
+			out = append(out, &clone)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.Before(out[j].CreatedAt) })
+	return out, nil
+}
+
+func (r *fakeComments) SoftDelete(_ context.Context, id domain.ID, at time.Time) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	c, ok := r.byID[id]
+	if !ok || c.DeletedAt != nil {
+		return domain.ErrNotFound
+	}
+	c.DeletedAt = &at
+	c.UpdatedAt = at
+	return nil
+}
+
 // --- operation log ---
 
 // fakeOpLog records what the services appended, so a test can assert on the SHAPE of the log

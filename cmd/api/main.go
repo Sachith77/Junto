@@ -82,6 +82,7 @@ func run() error {
 		slots       = repository.NewSlotRepository(pool)
 		options     = repository.NewSlotOptionRepository(pool)
 		votes       = repository.NewVoteRepository(pool)
+		comments    = repository.NewCommentRepository(pool)
 		budget      = repository.NewBudgetRepository(pool)
 		attachments = repository.NewAttachmentRepository(pool)
 		ops         = repository.NewOpLogRepository(pool)
@@ -212,6 +213,10 @@ func run() error {
 		Votes: votes, Slots: slots, Members: members, Trips: trips, Ops: ops, Tx: txm,
 		Pub: broker,
 	})
+	commentService := service.NewCommentService(service.CommentDeps{
+		Comments: comments, Slots: slots, Members: members, Trips: trips, Ops: ops, Tx: txm,
+		Pub: broker, Clock: domain.SystemClock{},
+	})
 	budgetService := service.NewBudgetService(service.BudgetDeps{
 		Budget: budget, Members: members, Trips: trips, Ops: ops, Tx: txm, Pub: broker,
 		Clock: domain.SystemClock{},
@@ -246,12 +251,9 @@ func run() error {
 	}
 
 	engine := syncengine.NewEngine(syncengine.EngineConfig{
-		Broker: broker,
-		Services: syncengine.Services{
-			Trips: tripService, Days: dayService, Slots: slotService,
-			Options: optionService, Votes: voteService,
-		},
-		Ops: ops, Trips: trips, Logger: logger,
+		Broker:   broker,
+		Services: newSyncEngineServices(tripService, dayService, slotService, optionService, voteService, commentService, budgetService),
+		Ops:      ops, Trips: trips, Logger: logger,
 	})
 
 	// The broker's peer pump runs for the life of the process. With NoopTransport it simply
@@ -277,17 +279,18 @@ func run() error {
 	})
 
 	router, cleanupRouter := junto.NewRouter(junto.Deps{
-		WS:      wsHandlers,
-		Auth:    authService,
-		Trips:   tripService,
-		Members: membershipService,
-		Days:    dayService,
-		Slots:   slotService,
-		Options: optionService,
-		Votes:   voteService,
-		Budget:  budgetService,
-		Files:   attachmentService,
-		Logger:  logger,
+		WS:       wsHandlers,
+		Auth:     authService,
+		Trips:    tripService,
+		Members:  membershipService,
+		Days:     dayService,
+		Slots:    slotService,
+		Options:  optionService,
+		Votes:    voteService,
+		Comments: commentService,
+		Budget:   budgetService,
+		Files:    attachmentService,
+		Logger:   logger,
 		Config: junto.RouterConfig{
 			AllowedOrigins: cfg.HTTP.CORSAllowedOrigins,
 			SecureCookies:  cfg.Env.IsProduction(),
@@ -332,6 +335,32 @@ func run() error {
 	}
 	logger.Info("shutdown complete")
 	return nil
+}
+
+// newSyncEngineServices assembles syncengine.Services in exactly one place.
+//
+// It exists because this literal used to be built inline inside run(), and that is precisely
+// how Budget went missing (D104): syncengine.Services declared a Budget field, dispatch.go's
+// budgetSet/OpBudgetDelete cases called e.services.Budget unconditionally, and nothing caught
+// the omission because tests/stack_test.go builds its OWN copy of this literal rather than
+// calling run()'s. Pulling it out into a named function does not by itself stop a second
+// hand-written copy from drifting — cmd/api_test.go's TestSyncEngineServicesHasNoNilFields
+// (below) is what actually closes that gap, by calling this exact function with distinct
+// sentinel values and reflecting over the result. What the extraction buys is a function small
+// and pure enough for that test to call without standing up a database.
+func newSyncEngineServices(
+	trips *service.TripService,
+	days *service.DayService,
+	slots *service.SlotService,
+	options *service.SlotOptionService,
+	votes *service.VoteService,
+	comments *service.CommentService,
+	budget *service.BudgetService,
+) syncengine.Services {
+	return syncengine.Services{
+		Trips: trips, Days: days, Slots: slots,
+		Options: options, Votes: votes, Comments: comments, Budget: budget,
+	}
 }
 
 // newMailer picks an email implementation.

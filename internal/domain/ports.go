@@ -465,3 +465,15 @@ func (o AttachmentOwner) Valid() bool {
 	}
 	return n == 1
 }
+
+// CommentRepository persists flat, per-slot discussion.
+//
+// No Update: comments are append-only, the same treatment as attachments (D46/D84) — post a
+// new one, delete the old one. SoftDelete carries no expectedVersion for the same reason
+// AttachmentRepository.SoftDelete does not: there is no version column to check against.
+type CommentRepository interface {
+	Create(ctx context.Context, c *Comment) error
+	GetByID(ctx context.Context, id ID) (*Comment, error)
+	ListForSlot(ctx context.Context, slotID ID) ([]*Comment, error)
+	SoftDelete(ctx context.Context, id ID, at time.Time) error
+}

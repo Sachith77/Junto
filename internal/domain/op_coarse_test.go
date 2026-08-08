@@ -53,8 +53,18 @@ func fixtureAttachment() *Attachment {
 	}
 }
 
+func fixtureComment() *Comment {
+	author := NewID()
+	return &Comment{
+		ID: NewID(), SlotID: NewID(), TripID: NewID(),
+		Body: "Should we book the earlier flight?", AuthorID: &author,
+		UpdatedAt: time.Now().UTC().Truncate(time.Second),
+	}
+}
+
 func budgetMask() FieldMask     { return NewFieldMask(OpBudgetSet.AllowedFields()...) }
 func attachmentMask() FieldMask { return NewFieldMask(OpAttachmentAdd.AllowedFields()...) }
+func commentMask() FieldMask    { return NewFieldMask(OpCommentCreate.AllowedFields()...) }
 
 // TestBudgetOpCarriesTheWholeEntry is the structural form of "the budget is atomic".
 //
@@ -286,6 +296,122 @@ func TestAttachmentRemovalIsATombstone(t *testing.T) {
 	}
 }
 
+// TestCommentOpsAreCreateAndDeleteOnly pins the vocabulary itself, the same way
+// TestAttachmentOpsAreAddAndRemoveOnly does for attachments. The way "comments are
+// append-only" breaks is not dramatically — it is somebody adding comment.edit.v1 because a
+// "fix a typo" feature request landed. This fails when that happens.
+func TestCommentOpsAreCreateAndDeleteOnly(t *testing.T) {
+	var commentKinds []OpKind
+	for k := range opKinds {
+		if k.Entity() == "comment" {
+			commentKinds = append(commentKinds, k)
+		}
+	}
+	slices.Sort(commentKinds)
+	want := []OpKind{OpCommentCreate, OpCommentDelete}
+	slices.Sort(want)
+
+	if !slices.Equal(commentKinds, want) {
+		t.Errorf("comment vocabulary is %v, want %v — comments are append-only, the same "+
+			"treatment as attachments (D46/D84); an edit verb would imply a merge grain they "+
+			"do not have", commentKinds, want)
+	}
+	for _, k := range commentKinds {
+		if k.Mergeable() {
+			t.Errorf("%s reports Mergeable() = true; comments have no field-level merge grain", k)
+		}
+	}
+}
+
+// TestCommentOpsCarryNoVersion mirrors TestAttachmentOpsCarryNoVersion: comments have no
+// version column, so writing anything other than zero would invent an optimistic-concurrency
+// story for an entity that does not have one.
+func TestCommentOpsCarryNoVersion(t *testing.T) {
+	c := fixtureComment()
+	raw := must(CommentPayload(c, commentMask()))
+
+	var decoded opPayload
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatalf("decoding the payload: %v", err)
+	}
+	if decoded.Meta.Version != 0 {
+		t.Errorf("comment op meta.version = %d, want 0", decoded.Meta.Version)
+	}
+}
+
+// TestTwoConcurrentCommentsBothSurvive mirrors TestTwoConcurrentAttachmentsBothSurvive: two
+// comments posted at the same instant on the same slot are not a conflict, they are just two
+// rows.
+func TestTwoConcurrentCommentsBothSurvive(t *testing.T) {
+	tripID, slotID := NewID(), NewID()
+	mask := commentMask()
+	r := NewReplica()
+
+	first, second := fixtureComment(), fixtureComment()
+	first.TripID, second.TripID = tripID, tripID
+	first.SlotID, second.SlotID = slotID, slotID
+
+	for i, c := range []*Comment{first, second} {
+		if err := r.Apply(Op{
+			Seq: int64(i + 1), TripID: tripID, EntityID: c.ID, Kind: OpCommentCreate,
+			Fields: mask, Payload: must(CommentPayload(c, mask)),
+		}); err != nil {
+			t.Fatalf("applying comment %d: %v", i, err)
+		}
+	}
+
+	if len(r.Comments) != 2 {
+		t.Fatalf("folded %d comments, want 2 — concurrent comments must not displace each other",
+			len(r.Comments))
+	}
+	for _, c := range []*Comment{first, second} {
+		folded, ok := r.Comments[c.ID]
+		if !ok {
+			t.Fatalf("comment %s is missing from the fold", c.ID)
+		}
+		if folded.Body != c.Body || folded.SlotID != slotID {
+			t.Errorf("comment %s folded to %+v", c.ID, folded)
+		}
+	}
+}
+
+// TestCommentDeletionIsATombstone mirrors TestAttachmentRemovalIsATombstone: a resyncing
+// client must learn about a deleted comment instead of silently keeping it.
+func TestCommentDeletionIsATombstone(t *testing.T) {
+	c := fixtureComment()
+	r := NewReplica()
+
+	if err := r.Apply(Op{
+		Seq: 1, TripID: c.TripID, EntityID: c.ID, Kind: OpCommentCreate,
+		Fields: commentMask(), Payload: must(CommentPayload(c, commentMask())),
+	}); err != nil {
+		t.Fatalf("applying the create: %v", err)
+	}
+
+	now := time.Now().UTC().Truncate(time.Second)
+	tombstone := *c
+	tombstone.DeletedAt = &now
+	deleteMask := NewFieldMask(FieldDeletedAt)
+
+	if err := r.Apply(Op{
+		Seq: 2, TripID: c.TripID, EntityID: c.ID, Kind: OpCommentDelete,
+		Fields: deleteMask, Payload: must(CommentPayload(&tombstone, deleteMask)),
+	}); err != nil {
+		t.Fatalf("applying the delete: %v", err)
+	}
+
+	folded := r.Comments[c.ID]
+	if !folded.IsDeleted() {
+		t.Error("the comment survived its delete op")
+	}
+	// The delete names only deleted_at, so the body must be untouched — a delete that blanked
+	// the row would leave a client unable to render "[deleted comment]" with its original text
+	// available to a moderator.
+	if folded.Body != c.Body {
+		t.Errorf("delete clobbered fields it did not name: %+v", folded)
+	}
+}
+
 // TestFoldRejectsACoarseEditOfAnUnknownEntity mirrors the itinerary's equivalent guard: an
 // operation that is not a create, targeting something the replica has never seen, means a
 // dropped operation rather than an entity to invent.
@@ -304,6 +430,11 @@ func TestFoldRejectsACoarseEditOfAnUnknownEntity(t *testing.T) {
 			Seq: 1, TripID: tripID, EntityID: NewID(), Kind: OpAttachmentRemove,
 			Fields:  NewFieldMask(FieldDeletedAt),
 			Payload: must(AttachmentPayload(&Attachment{}, NewFieldMask(FieldDeletedAt))),
+		}},
+		{"comment delete before create", Op{
+			Seq: 1, TripID: tripID, EntityID: NewID(), Kind: OpCommentDelete,
+			Fields:  NewFieldMask(FieldDeletedAt),
+			Payload: must(CommentPayload(&Comment{}, NewFieldMask(FieldDeletedAt))),
 		}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

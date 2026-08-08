@@ -12,16 +12,18 @@ import (
 // as a story ("owner creates a trip, invites an editor, editor proposes a hotel...") instead
 // of re-wiring dependencies in every test.
 type planningHarness struct {
-	trips   *TripService
-	members *MembershipService
-	days    *DayService
-	slots   *SlotService
-	options *SlotOptionService
-	votes   *VoteService
-	budget  *BudgetService
-	files   *AttachmentService
+	trips    *TripService
+	members  *MembershipService
+	days     *DayService
+	slots    *SlotService
+	options  *SlotOptionService
+	votes    *VoteService
+	comments *CommentService
+	budget   *BudgetService
+	files    *AttachmentService
 
 	membersFake     *fakeMembers
+	commentsFake    *fakeComments
 	budgetFake      *fakeBudget
 	attachmentsFake *fakeAttachments
 	storageFake     *fakeStorage
@@ -46,6 +48,7 @@ func newPlanningHarness(t *testing.T) *planningHarness {
 	slotsFake := newFakeSlots()
 	optionsFake := newFakeSlotOptions()
 	votesFake := newFakeVotes()
+	commentsFake := newFakeComments()
 	mailerFake := &fakeMailer{}
 	opsFake := newFakeOpLog()
 	budgetFake := newFakeBudget()
@@ -75,6 +78,10 @@ func newPlanningHarness(t *testing.T) *planningHarness {
 			Votes: votesFake, Slots: slotsFake, Members: membersFake, Trips: tripsFake,
 			Ops: opsFake, Tx: &fakeTx{},
 		}),
+		comments: NewCommentService(CommentDeps{
+			Comments: commentsFake, Slots: slotsFake, Members: membersFake, Trips: tripsFake,
+			Ops: opsFake, Tx: &fakeTx{},
+		}),
 		budget: NewBudgetService(BudgetDeps{
 			Budget: budgetFake, Members: membersFake, Trips: tripsFake, Ops: opsFake, Tx: &fakeTx{},
 		}),
@@ -88,6 +95,7 @@ func newPlanningHarness(t *testing.T) *planningHarness {
 		attachmentsFake: attachmentsFake,
 		storageFake:     storageFake,
 		membersFake:     membersFake,
+		commentsFake:    commentsFake,
 		usersFake:       usersFake,
 		mailerFake:      mailerFake,
 		opsFake:         opsFake,

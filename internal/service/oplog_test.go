@@ -75,9 +75,13 @@ func TestEveryPlanningMutationIsLogged(t *testing.T) {
 	if _, err := h.votes.Cast(ctx, trip.ID, owner.ID, slot.ID, &option.ID); err != nil {
 		t.Fatalf("casting vote: %v", err)
 	}
+	if _, err := h.comments.Create(ctx, trip.ID, owner.ID, slot.ID, CreateCommentInput{Body: "Great pick!"}); err != nil {
+		t.Fatalf("commenting: %v", err)
+	}
 
 	for _, kind := range []domain.OpKind{
 		domain.OpDayCreate, domain.OpSlotCreate, domain.OpOptionCreate, domain.OpVoteSet,
+		domain.OpCommentCreate,
 	} {
 		if len(opsFor(t, h, kind)) == 0 {
 			t.Errorf("no %s operation was logged; a resyncing client would never see it", kind)

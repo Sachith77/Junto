@@ -337,6 +337,7 @@ func TestEveryOpKindHasAllowedFields(t *testing.T) {
 		OpVoteSet,
 		OpBudgetSet, OpBudgetDelete,
 		OpAttachmentAdd, OpAttachmentRemove,
+		OpCommentCreate, OpCommentDelete,
 	}
 	if len(kinds) != len(opKinds) {
 		t.Errorf("this test lists %d kinds but the vocabulary has %d; a kind was added "+
