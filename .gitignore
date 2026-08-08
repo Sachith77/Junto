@@ -34,3 +34,6 @@ Thumbs.db
 
 # Claude Code — personal permission allowlist, not shared project config
 .claude/settings.local.json
+
+# Design-review screenshots (regenerated on demand)
+/web/shots/

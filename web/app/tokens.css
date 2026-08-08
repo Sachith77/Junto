@@ -1,0 +1,373 @@
+/* ============================================================================
+   Junto design tokens
+   ============================================================================
+
+   TWO VISUAL LANGUAGES, ONE SYSTEM.
+
+   OUTER SHELL — landing, trips list, mode selection, Memories.
+     Cinematic and editorial. Large serif display type, full-bleed photography
+     under scrims, generous whitespace, horizontal card carousels. The register
+     is "this is beautiful and worth savoring."
+
+   INNER APP — Plan mode: itinerary, slot detail, voting, comments, budget.
+     Clean, dense, functional. Sans-serif body, compact spacing, clear
+     hierarchy. These screens hold real-time, information-dense data (vote
+     tallies, cost figures, comment threads, presence) and cinematic treatment
+     would actively fight usability. No full-bleed imagery, no huge serif.
+
+   THE THREE THREADS that make them one product:
+     1. TYPE   — one serif family (Fraunces) for every page/section header,
+                 including inside the dense app. A slot detail's title is set
+                 in the same face as the landing hero, just smaller.
+     2. COLOR  — one accent hue (amber), meaning the same thing everywhere:
+                 "chosen / active / live." Presence rings, primary buttons,
+                 selected-option highlighting.
+     3. FORM   — one --radius-card and one shadow family shared by every card
+                 type: trip cards, option cards, memory cards.
+
+   Layering: PRIMITIVES (raw ramps) -> SEMANTICS (roles). Components should
+   use semantics almost exclusively. Reach for a primitive only when no role
+   fits, which usually means a role is missing.
+   ============================================================================ */
+
+/* `static` is load-bearing, not stylistic. Tailwind v4 tree-shakes @theme
+   variables that no literal utility class references — so a token consumed only
+   through `var(--color-…)` in an inline style, a keyframe, or a gradient would
+   silently resolve to nothing at runtime. That is precisely how a design system
+   develops holes that only appear on one screen. Emit everything. */
+@theme static {
+  /* --------------------------------------------------------------------------
+     TYPEFACES
+
+     Fraunces is a variable serif with an OPTICAL SIZE axis, which is why it is
+     here rather than a pure display face like Playfair. Thread #1 requires the
+     same serif to work at a 72px hero AND an 18px section header inside a dense
+     UI; an optical-size axis is precisely what keeps the small end from looking
+     like shrunken display type.
+
+     Inter carries all UI text. Chosen for dense-UI legibility at 13-14px and,
+     specifically for the budget screens, real tabular lining numerals — money
+     columns that do not align are money columns users do not trust.
+     -------------------------------------------------------------------------- */
+  --font-display: var(--font-fraunces), ui-serif, Georgia, "Times New Roman", serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+
+  /* --------------------------------------------------------------------------
+     PRIMITIVE — INK (warm neutral)
+
+     Warm-tinted rather than pure gray: it sits under amber without the slight
+     green cast a neutral gray takes on next to it, and it reads as paper rather
+     than as chrome. Contrast figures are against --color-ink-50.
+     -------------------------------------------------------------------------- */
+  --color-ink-50: #faf9f7;  /* paper — page background */
+  --color-ink-100: #f3f1ed;
+  --color-ink-200: #e7e3dd; /* hairline borders */
+  --color-ink-300: #d6d0c8; /* stronger borders, disabled edges */
+  --color-ink-400: #a8a29a; /* 2.6:1 — DECORATIVE ONLY, never text */
+  --color-ink-500: #7d766d; /* 4.6:1 — tertiary text, >=14px only */
+  --color-ink-600: #5c554d; /* 7.2:1 — secondary text */
+  --color-ink-700: #443e38;
+  --color-ink-800: #2a2621;
+  --color-ink-900: #1a1714; /* 16.5:1 — primary text */
+  --color-ink-950: #0f0d0b; /* full-bleed dark, scrim base */
+
+  /* --------------------------------------------------------------------------
+     PRIMITIVE — ACCENT (amber)
+
+     One hue, but the step changes with the ground so that contrast survives
+     both contexts. This is what makes "one accent used identically" honest
+     rather than a claim that quietly fails WCAG on one side:
+       on DARK media  -> accent-400 (9:1 on ink-950)
+       on LIGHT UI    -> accent-600 as a button fill w/ white text (5.0:1)
+       as TEXT on light -> accent-700, never 500/600 at small sizes
+       as a TINT      -> accent-50 (selected-option background)
+     -------------------------------------------------------------------------- */
+  --color-accent-50: #fef6ec;
+  --color-accent-100: #fbe8ce;
+  --color-accent-200: #f6d19e;
+  --color-accent-300: #efb365;
+  --color-accent-400: #e8971f; /* on-dark: rings, labels over photography */
+  --color-accent-500: #d97a06; /* brand mark */
+  --color-accent-600: #b45e09; /* interactive fill, white text 5.0:1 */
+  --color-accent-700: #8f4a0b; /* hover/pressed, and accent TEXT on light */
+  --color-accent-800: #6b380c;
+  --color-accent-900: #4a2709;
+
+  /* --------------------------------------------------------------------------
+     PRIMITIVE — STATUS
+
+     Deliberately few. The budget screens need a trustworthy "these numbers
+     balance" / "they do not" pair, and the sync engine needs a conflict colour.
+     Everything else is ink or accent.
+     -------------------------------------------------------------------------- */
+  --color-positive-50: #ecfdf3;
+  --color-positive-600: #15803d; /* 4.8:1 on white */
+  --color-positive-700: #14663a;
+  --color-critical-50: #fef2f2;
+  --color-critical-600: #b91c1c; /* 5.9:1 on white */
+  --color-critical-700: #991b1b;
+
+  /* --------------------------------------------------------------------------
+     SEMANTIC — SURFACE / TEXT / BORDER
+
+     Components use these. Note there are two "on-media" text roles: content
+     sitting over photography is a distinct role from content on paper, because
+     it must never be allowed to inherit a light-ground colour by accident.
+     -------------------------------------------------------------------------- */
+  --color-surface: var(--color-ink-50);
+  --color-surface-raised: #ffffff;
+  --color-surface-sunken: var(--color-ink-100);
+  --color-surface-inverse: var(--color-ink-950);
+
+  /* Named `fg` rather than `text` so utilities read `text-fg-muted` instead of
+     the stuttering `text-text-secondary`; same reason lines are `line` and not
+     `border`. Ergonomics of the generated class name is part of the token
+     design — a name that is annoying to type is a name people work around. */
+  --color-fg: var(--color-ink-900);
+  --color-fg-muted: var(--color-ink-600);
+  --color-fg-subtle: var(--color-ink-500);
+  --color-fg-inverse: #ffffff;
+  --color-fg-on-media: #ffffff;
+  --color-fg-on-media-dim: rgb(255 255 255 / 0.78);
+
+  --color-line-subtle: var(--color-ink-200);
+  --color-line: var(--color-ink-300);
+  --color-line-strong: var(--color-ink-400);
+
+  /* SEMANTIC — ACCENT ROLES. Thread #2 lives here. */
+  --color-accent: var(--color-accent-600);
+  --color-accent-hover: var(--color-accent-700);
+  --color-accent-text: var(--color-accent-700);
+  --color-accent-tint: var(--color-accent-50);
+  --color-accent-on-dark: var(--color-accent-400);
+
+  /* SEMANTIC — LIVE. Real-time state: presence rings, arriving-op highlight.
+     Same hue as accent by design — "something is live here" and "this is the
+     chosen one" are both states worth the eye, and splitting them into two
+     colours would make the interface louder without making it clearer. */
+  --color-live: var(--color-accent-500);
+  --color-live-tint: var(--color-accent-50);
+
+  /* --------------------------------------------------------------------------
+     TYPE SCALE — DISPLAY (serif)
+
+     Outer shell hero sizes down to display-sm, which is the size that appears
+     as a section header INSIDE the dense app. Tracking tightens as size grows,
+     which is what stops large serif from looking loose and amateurish.
+     -------------------------------------------------------------------------- */
+  --text-display-3xl: 4.5rem;
+  --text-display-3xl--line-height: 1.02;
+  --text-display-3xl--letter-spacing: -0.03em;
+  --text-display-3xl--font-weight: 400;
+
+  --text-display-2xl: 3.5rem;
+  --text-display-2xl--line-height: 1.05;
+  --text-display-2xl--letter-spacing: -0.025em;
+  --text-display-2xl--font-weight: 400;
+
+  --text-display-xl: 2.75rem;
+  --text-display-xl--line-height: 1.08;
+  --text-display-xl--letter-spacing: -0.02em;
+  --text-display-xl--font-weight: 400;
+
+  --text-display-lg: 2rem;
+  --text-display-lg--line-height: 1.15;
+  --text-display-lg--letter-spacing: -0.015em;
+  --text-display-lg--font-weight: 400;
+
+  --text-display-md: 1.5rem;
+  --text-display-md--line-height: 1.25;
+  --text-display-md--letter-spacing: -0.01em;
+  --text-display-md--font-weight: 400;
+
+  /* THE THREAD, at its smallest: section headers in the dense app. */
+  --text-display-sm: 1.125rem;
+  --text-display-sm--line-height: 1.35;
+  --text-display-sm--letter-spacing: -0.005em;
+  --text-display-sm--font-weight: 500;
+
+  /* --------------------------------------------------------------------------
+     TYPE SCALE — UI (sans)
+
+     Tighter and smaller than a marketing scale, because these screens are read
+     as data, not as prose. ui-md (14px) is the app's default body size.
+     -------------------------------------------------------------------------- */
+  --text-ui-2xs: 0.6875rem; /* 11px — timestamps, micro-labels */
+  --text-ui-2xs--line-height: 1rem;
+  --text-ui-2xs--letter-spacing: 0.01em;
+
+  --text-ui-xs: 0.75rem; /* 12px — meta, captions, avatar initials */
+  --text-ui-xs--line-height: 1.125rem;
+
+  --text-ui-sm: 0.8125rem; /* 13px — dense rows, table cells */
+  --text-ui-sm--line-height: 1.25rem;
+
+  --text-ui-md: 0.875rem; /* 14px — DEFAULT app body */
+  --text-ui-md--line-height: 1.375rem;
+
+  --text-ui-lg: 1rem; /* 16px — inputs, comfortable prose, outer-shell body */
+  --text-ui-lg--line-height: 1.5rem;
+
+  --text-ui-xl: 1.125rem; /* 18px */
+  --text-ui-xl--line-height: 1.625rem;
+
+  --text-ui-2xl: 1.25rem; /* 20px */
+  --text-ui-2xl--line-height: 1.75rem;
+
+  /* --------------------------------------------------------------------------
+     RADIUS
+
+     Thread #3. --radius-card is its own token precisely so that trip cards,
+     option cards and memory cards cannot drift apart: they all read the same
+     name, so changing the card language is a one-line change and an accidental
+     divergence requires deliberately reaching past the token.
+     -------------------------------------------------------------------------- */
+  --radius-xs: 0.25rem; /* 4px  — chips, badges */
+  --radius-sm: 0.375rem; /* 6px  — inputs, small buttons */
+  --radius-md: 0.625rem; /* 10px — buttons, inner panels */
+  --radius-lg: 0.875rem; /* 14px */
+  --radius-xl: 1.25rem; /* 20px — modals, hero media blocks */
+  --radius-card: var(--radius-lg); /* EVERY card type. */
+
+  /* --------------------------------------------------------------------------
+     SHADOW
+
+     Tinted with ink-950 rather than pure black — a neutral-black shadow over
+     warm paper reads slightly blue and dirty. One family; the outer shell uses
+     the large end for photo cards, the dense app uses the small end. Elevation
+     differs, vocabulary does not.
+
+     NOTE for the outer shell: over full-bleed photography, shadow does not
+     read at all. Elevation there comes from the scrim, not from these.
+     -------------------------------------------------------------------------- */
+  --shadow-xs: 0 1px 2px rgb(15 13 11 / 0.05);
+  --shadow-sm: 0 1px 2px rgb(15 13 11 / 0.04), 0 2px 6px rgb(15 13 11 / 0.06);
+  --shadow-md: 0 2px 4px rgb(15 13 11 / 0.04), 0 6px 16px rgb(15 13 11 / 0.08);
+  --shadow-lg: 0 4px 8px rgb(15 13 11 / 0.04), 0 16px 32px rgb(15 13 11 / 0.1);
+  --shadow-xl: 0 8px 16px rgb(15 13 11 / 0.05), 0 32px 64px rgb(15 13 11 / 0.14);
+
+  /* --------------------------------------------------------------------------
+     MOTION
+     -------------------------------------------------------------------------- */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out-soft: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* --------------------------------------------------------------------------
+     ANIMATION — REAL-TIME FEEDBACK
+
+     live-flash is the visual acknowledgement that a change arrived from ANOTHER
+     user over the WebSocket. It matters more here than in a typical app: this
+     project's whole claim is a real-time sync engine, and state that mutates
+     silently gives the user no evidence any of that engineering exists.
+
+     Deliberately a tint-and-fade rather than a pulse or a bounce — it must be
+     noticeable in peripheral vision without pulling focus away from whatever
+     the user was reading, and it must be able to fire several times at once
+     (three members editing) without the screen becoming a light show.
+     -------------------------------------------------------------------------- */
+  --animate-live-flash: live-flash 1.2s var(--ease-out-soft);
+  --animate-rise-in: rise-in 0.32s var(--ease-out-soft);
+
+  @keyframes live-flash {
+    0% {
+      background-color: var(--color-live-tint);
+      box-shadow: inset 0 0 0 1px var(--color-accent-300);
+    }
+    100% {
+      background-color: transparent;
+      box-shadow: inset 0 0 0 1px transparent;
+    }
+  }
+
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+/* ============================================================================
+   SCRIM — the accessibility rule the cinematic direction lives or dies on.
+
+   The classic failure of photography-forward design is white text over a photo
+   that happens to be bright. It is not enough to pick nice photos: user-supplied
+   trip and memory imagery is exactly the case nobody gets to art-direct.
+
+   THE RULE: text over media ALWAYS sits on a scrim. Never directly on a photo.
+   --scrim-media is the default gradient for a bottom-anchored caption; the
+   floor opacity at the text end (0.92) is set so white text clears 4.5:1 even
+   over a fully white image.
+   ============================================================================ */
+:root {
+  --scrim-media: linear-gradient(
+    to top,
+    rgb(15 13 11 / 0.92) 0%,
+    rgb(15 13 11 / 0.72) 28%,
+    rgb(15 13 11 / 0.36) 62%,
+    rgb(15 13 11 / 0.08) 100%
+  );
+  --scrim-flat: rgb(15 13 11 / 0.58);
+  --scrim-hero: linear-gradient(
+    to bottom,
+    rgb(15 13 11 / 0.5) 0%,
+    rgb(15 13 11 / 0.34) 40%,
+    rgb(15 13 11 / 0.78) 100%
+  );
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: var(--text-ui-md);
+    line-height: var(--text-ui-md--line-height);
+  }
+
+  /* Money, vote counts, sequence numbers and timestamps must not jitter as
+     digits change — they update live, in place, while being read. This is the
+     concrete reason Inter was chosen over a font without real tabular figures. */
+  .tabular,
+  [data-numeric] {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+
+  /* ONE focus ring, visible on both grounds. Keyboard-only (:focus-visible) so
+     that pointer users do not see a ring on every click, but every interactive
+     element — vote buttons, comment inputs, card links — is reachable and
+     obviously focused when tabbed to. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent-600);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  /* Over media, the light-ground accent would disappear. */
+  [data-on-media] :focus-visible,
+  [data-on-media]:focus-visible {
+    outline-color: var(--color-accent-400);
+  }
+
+  /* The live-flash is decorative reinforcement, never the only signal that
+     something changed — the underlying value changes too. Users who ask for
+     reduced motion simply do not get the flourish. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
