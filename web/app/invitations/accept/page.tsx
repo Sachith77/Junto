@@ -1,69 +1,91 @@
 "use client";
 
-import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { acceptInvitation } from "@/lib/api/members";
 import { useAuth } from "@/context/AuthContext";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { ButtonLink } from "@/components/ui/Button";
 
 function AcceptInvitationInner() {
-  const params = useSearchParams();
-  const token = params.get("token");
+  const token = useSearchParams().get("token");
   const { status } = useAuth();
   const router = useRouter();
-  const [state, setState] = useState<"pending" | "error">("pending");
+  const [failed, setFailed] = useState(false);
 
   useEffect(() => {
     if (status !== "authenticated" || !token) return;
     acceptInvitation(token)
       .then((trip) => router.replace(`/trips/${trip.id}`))
-      .catch(() => setState("error"));
+      .catch(() => setFailed(true));
   }, [status, token, router]);
 
   if (!token) {
     return (
-      <p role="alert" className="text-red-700">
-        This invitation link is missing its token.
-      </p>
+      <AuthShell title="Link not valid" blurb="This invitation link is missing its token.">
+        <ButtonLink href="/trips" size="lg" className="w-full">
+          Go to your trips
+        </ButtonLink>
+      </AuthShell>
     );
   }
 
-  if (status === "loading") return <p>Loading…</p>;
+  if (status === "loading") {
+    return (
+      <AuthShell title="One moment…">
+        <span role="status" className="sr-only">
+          Checking your session
+        </span>
+      </AuthShell>
+    );
+  }
 
   if (status === "anonymous") {
     return (
-      <p>
-        <Link href="/login" className="text-blue-600 underline">
-          Log in
-        </Link>{" "}
-        (or{" "}
-        <Link href="/signup" className="text-blue-600 underline">
-          sign up
-        </Link>
-        ), then open this invitation link again to join the trip.
-      </p>
+      <AuthShell
+        title="You've been invited"
+        // The invitation is checked against the invitee's own address (D58), so signing in
+        // first is not incidental — it is what makes a targeted invite mean anything.
+        blurb="Log in or sign up first, then open this link again to join the trip."
+      >
+        <div className="space-y-2">
+          <ButtonLink href="/login" size="lg" className="w-full">
+            Log in
+          </ButtonLink>
+          <ButtonLink href="/signup" variant="secondary" size="lg" className="w-full">
+            Create an account
+          </ButtonLink>
+        </div>
+      </AuthShell>
     );
   }
 
-  if (state === "error") {
+  if (failed) {
     return (
-      <p role="alert" className="text-red-700">
-        That invitation is invalid, expired, or already used.
-      </p>
+      <AuthShell
+        title="Invitation not valid"
+        blurb="It may have expired, been revoked, already been used, or been meant for a different address."
+      >
+        <ButtonLink href="/trips" size="lg" className="w-full">
+          Go to your trips
+        </ButtonLink>
+      </AuthShell>
     );
   }
 
-  return <p>Joining trip…</p>;
+  return (
+    <AuthShell title="Joining trip…">
+      <span role="status" className="sr-only">
+        Accepting your invitation
+      </span>
+    </AuthShell>
+  );
 }
 
 export default function AcceptInvitationPage() {
   return (
-    <main className="flex flex-1 items-center justify-center p-8">
-      <div className="max-w-sm space-y-2 text-center">
-        <Suspense fallback={null}>
-          <AcceptInvitationInner />
-        </Suspense>
-      </div>
-    </main>
+    <Suspense fallback={null}>
+      <AcceptInvitationInner />
+    </Suspense>
   );
 }
