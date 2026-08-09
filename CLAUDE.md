@@ -440,6 +440,7 @@ Also found while wiring this slice, unrelated to comments themselves but caught 
 
 | D104 | `cmd/api`'s `syncengine.Services` construction is pulled into a named function (`newSyncEngineServices`) with a **reflection-based test asserting every returned field is non-nil**, called with distinct sentinel values | This is a different failure shape from every entry in the "standing principle" section above, and worth distinguishing rather than filing alongside them: those are tests whose ASSERTION was wrong (measuring something narrower than its name claimed). This was a code path with **no test on it at all** — `tests/stack_test.go` builds its own hand-written copy of the same `syncengine.Services{}` literal for the full-stack suite, and the two had already drifted (stack_test.go had `Budget` correctly wired; `main.go` did not) before anyone noticed. Extracting the literal into a function does not, by itself, stop a second hand-written copy from drifting the same way — the test is what closes that, because it calls the EXACT function `run()` calls rather than a re-implementation, and fails if anything it returns is nil. Verified against the actual historical bug: reverting `newSyncEngineServices`'s `Budget` parameter to a literal `nil` fails the test with the same nil-panic-in-production message the real bug would have produced |
 | D105 | `AUTH_AUTO_VERIFY_EMAIL` marks new accounts verified at signup, **refused outright in production** by config validation | A deliberate, bounded exception to D29 rather than a softening of it. D29's reasoning — an address that was never proven cannot be recovered by password reset, so an unrecoverable account is worse than an unusable one — is about REAL users with REAL addresses; locally there is no address to prove and the sign-up/open-Mailpit/find-the-link loop is friction with no reviewing value. The failure mode this avoids is the realistic one: when a demo loop is annoying enough, the thing people actually reach for is weakening the real policy for everyone. Two properties keep it honest. It is **refused, not ignored**, in production (D19's reasoning: an operator who set it believes signups are auto-verified, so booting with it silently off is the worse failure). And it issues **no token and sends no mail** — a version that emailed a link AND verified the account would leave a live unspent credential in an inbox. The frontend branches on `email_verified_at` in the signup response rather than on a client-side copy of the server's configuration, so the two cannot disagree |
+| D106 | The demo seed is **deliberately unable to run against production**, and says so rather than acquiring a way | It needs a verified account to log in (D29), which only auto-verify (refused in production, D105) or a readable mailbox can provide. Both of the obvious ways to "fix" that are worse than the limitation: a seeding endpoint that mints verified accounts is an authentication bypass with a friendly name, and a service account with a fixed password is a credential in the repository. So the limit stands, the script fails with an actionable message naming `JUNTO_MAILBOX_URL` and the auto-verify flag, and a deployed demo runs against staging. Recorded here because the failure it prevents is the one that shows up at deploy time, in front of an audience, rather than in a test |
 
 ---
 
@@ -581,10 +582,39 @@ Also found while wiring this slice, unrelated to comments themselves but caught 
     fold consistency. Frontend: 8 component tests plus the same e2e page extended with a Part C
     proving a comment posted by one client appears live on a second client's screen, and that
     the author-only delete control does not even render for a non-author.
-  - ➡️ Remaining: threaded/richer collaboration surface (if scoped later), day/slot/option CRUD
-    UI (out of scope so far — fixtures create that state directly via the REST API), demo
-    polish items below.
-- **Stage 4 — Demo polish** ⬜: intentional UI, seed script, health/ready/live endpoints, deploy.
+  - ✅ Slice 3 — the visual pass, in four reviewed groups. **Part 1** produced `web/app/
+    tokens.css` before any screen was touched: two visual languages (cinematic outer shell,
+    dense inner app) threaded by one serif, one accent hue and one `--radius-card`. **Group A**
+    the outer shell (landing, trips list, create trip, three-mode picker). **Group B** Plan
+    mode — itinerary, slot detail, comment thread, members, budget — where the D41 hierarchy
+    finally lands: a filled accent badge for the group's decision against a neutral counter for
+    the raw tally, never colour alone. **Group C** Memories, derived from resolved slots
+    because no Memories backend exists. **Group D** the auth screens.
+    - A token-usage self-check was run at each group boundary rather than at the end, because
+      the failure mode is a token file that exists and is unused. It caught real drift each
+      time: `PresenceBar` still on raw Tailwind after Group B, and three diverged copies of the
+      avatar palette. The whole app is now free of raw Tailwind colours and text sizes,
+      verified by grep, and `/design` remains as a living specimen.
+    - Password reset had **no UI at all** — the backend has emailed `/reset-password?token=…`
+      links since Stage 1 Slice 3 and that route 404'd. Built in Group D.
+- **Stage 4 — Demo polish** 🚧: intentional UI ✅ (Stage 3 Slice 3), seed script ✅ (Slice 2,
+  below); health/ready/live endpoints and deploy ⬜ (Slice 3).
+  - ✅ Slice 2 — `web/scripts/seed-demo.ts` (`npm run seed`). Builds a demo-ready trip through
+    the PUBLIC API only — three real members via the real invitation flow, two days, five
+    slots, competing options, split votes, comments and a four-entry budget — and prints
+    credentials plus a step-by-step two-window collaboration script. Credentials are stable by
+    default so a demo can be rehearsed and re-run (`SEED_UNIQUE=1` for throwaway accounts).
+    API, web and mailbox URLs are all environment-overridable. Verified against BOTH
+    verification modes: with `AUTH_AUTO_VERIFY_EMAIL` off it reads the real verification links
+    out of the mailbox, which is the path a non-development environment would take.
+  - ⚠️ **Known limit, flagged before deployment rather than at deploy time (D106).** The seed
+    cannot run against a *production* deployment, and this is deliberate rather than a gap to
+    close. Logging in requires a verified email (D29), which can only be satisfied by
+    auto-verify (refused in production by config validation, D105) or by reading the mailbox
+    (production SMTP goes to real inboxes). A tool that could mint verified accounts against
+    production would be a hole, not a feature. For a deployed demo, point it at a staging stack
+    with a readable mailbox via `JUNTO_MAILBOX_URL`. The script fails with that instruction
+    rather than a confusing error.
 
 ### Product modes (context; do not build ahead)
 

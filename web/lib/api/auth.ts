@@ -32,3 +32,22 @@ export async function verifyEmail(token: string): Promise<void> {
 export async function me(): Promise<User> {
   return apiFetch<User>("/api/v1/me");
 }
+
+/** Always succeeds from the caller's point of view, whether or not the address exists —
+ *  reporting "no such account" would turn this into a free account-enumeration oracle. The UI
+ *  must therefore show the same confirmation either way. */
+export async function requestPasswordReset(email: string): Promise<void> {
+  await apiFetch<{ message: string }>("/api/v1/auth/request-password-reset", {
+    method: "POST",
+    auth: false,
+    body: { email },
+  });
+}
+
+export async function resetPassword(token: string, password: string): Promise<void> {
+  await apiFetch<void>("/api/v1/auth/reset-password", {
+    method: "POST",
+    auth: false,
+    body: { token, password },
+  });
+}

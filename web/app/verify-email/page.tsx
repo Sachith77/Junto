@@ -1,13 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { verifyEmail } from "@/lib/api/auth";
+import { AuthShell } from "@/components/auth/AuthShell";
+import { ButtonLink } from "@/components/ui/Button";
 
 function VerifyEmailInner() {
-  const params = useSearchParams();
-  const token = params.get("token");
+  const token = useSearchParams().get("token");
   const [state, setState] = useState<"pending" | "ok" | "error">(() =>
     token ? "pending" : "error"
   );
@@ -19,25 +19,37 @@ function VerifyEmailInner() {
       .catch(() => setState("error"));
   }, [token]);
 
+  if (state === "pending") {
+    return (
+      <AuthShell title="Verifying…" blurb="One moment.">
+        <span role="status" className="sr-only">
+          Verifying your email address
+        </span>
+      </AuthShell>
+    );
+  }
+
+  if (state === "ok") {
+    return (
+      <AuthShell title="Email verified" blurb="Your account is ready to use.">
+        <ButtonLink href="/login" size="lg" className="w-full">
+          Log in
+        </ButtonLink>
+      </AuthShell>
+    );
+  }
+
   return (
-    <main className="flex flex-1 items-center justify-center p-8">
-      <div className="max-w-sm space-y-2 text-center">
-        {state === "pending" && <p>Verifying…</p>}
-        {state === "ok" && (
-          <>
-            <h1 className="text-2xl font-semibold">Email verified</h1>
-            <Link href="/login" className="text-blue-600 underline">
-              Log in
-            </Link>
-          </>
-        )}
-        {state === "error" && (
-          <p role="alert" className="text-red-700">
-            That verification link is invalid or has expired.
-          </p>
-        )}
-      </div>
-    </main>
+    <AuthShell
+      title="Link not valid"
+      // Verification tokens are single-use, so the commonest cause of landing here is a
+      // second click on an already-used link — worth saying, since the fix differs.
+      blurb="That link is invalid, already used, or has expired."
+    >
+      <ButtonLink href="/login" size="lg" className="w-full">
+        Back to log in
+      </ButtonLink>
+    </AuthShell>
   );
 }
 

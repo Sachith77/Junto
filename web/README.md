@@ -26,6 +26,20 @@ your machine, run `npm run dev -- -p 3001` and set `CORS_ALLOWED_ORIGINS`/`WEB_B
 API to match — the API's CORS allowlist is exact-origin-match only (no wildcard), so the two
 must agree exactly.
 
+## Demo data
+
+```bash
+npm run seed                 # stable credentials — good for a rehearsed demo
+SEED_UNIQUE=1 npm run seed   # throwaway accounts each run
+```
+
+Builds a populated trip (three members via the real invitation flow, two days, five slots,
+competing options, split votes, comments, a four-entry budget) entirely through the public
+API, then prints the logins and a step-by-step two-window collaboration script.
+
+Override `JUNTO_API_URL`, `JUNTO_WEB_URL` and `JUNTO_MAILBOX_URL` to point it at another
+environment. It cannot run against production by design — see D106 in the root CLAUDE.md.
+
 ## Testing
 
 - `npm run lint` / `npx tsc --noEmit`
