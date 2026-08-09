@@ -12,9 +12,21 @@ import type {
 
 export type ConnectionStatus = "idle" | "connecting" | "open" | "reconnecting" | "closed";
 
+/** An op as delivered to the UI, tagged with whether THIS client caused it.
+ *
+ *  The distinction is what makes real-time feedback honest: flashing a highlight on your own
+ *  edit teaches the user nothing (they just did it) and would make every interaction blink.
+ *  A client's own operation comes back through the room broadcast carrying its client_op_id —
+ *  that echo IS the acknowledgement (see protocol.go) — so `self` is decided by whether we
+ *  are the one who minted that id. */
+export interface DeliveredOp {
+  op: OpFrame;
+  self: boolean;
+}
+
 interface Events {
   status: ConnectionStatus;
-  op: OpFrame;
+  op: DeliveredOp;
   "presence-snapshot": { tripId: string; members: PresenceMember[] };
   "presence-change": PresenceFrame;
   resync: { tripId: string; reason?: string };
@@ -54,6 +66,12 @@ export class TripSocket {
   private reconnectAttempt = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private closedByCaller = false;
+
+  // Client op ids this tab minted. Kept separately from `pending` because pending entries are
+  // deleted the moment a promise settles, and the op frame that settles it is the SAME frame
+  // the UI is about to classify — reading `pending` there would race and report a self-edit
+  // as a remote one. Bounded so a long session cannot grow it without limit.
+  private ownOpIds = new Set<string>();
 
   on<K extends keyof Events>(event: K, handler: Handler<K>): () => void {
     this.listeners[event].add(handler as never);
@@ -112,6 +130,17 @@ export class TripSocket {
     this.sendRaw({ type: "subscribe", trip_id: tripId, since_seq: sinceSeq });
   }
 
+  /** Remembers an op id as ours, evicting the oldest once the set gets large. The cap is
+   *  generous relative to how many operations can be in flight at once, so an entry is only
+   *  ever evicted long after its echo has arrived. */
+  private rememberOwnOp(id: string): void {
+    this.ownOpIds.add(id);
+    if (this.ownOpIds.size > 512) {
+      const oldest = this.ownOpIds.values().next().value;
+      if (oldest !== undefined) this.ownOpIds.delete(oldest);
+    }
+  }
+
   private sendRaw(frame: Record<string, unknown>): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.ws.send(JSON.stringify(frame));
@@ -127,6 +156,7 @@ export class TripSocket {
     values: Record<string, unknown>;
   }): Promise<OpFrame> {
     const clientOpId = crypto.randomUUID();
+    this.rememberOwnOp(clientOpId);
     return new Promise<OpFrame>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.pending.delete(clientOpId);
@@ -219,7 +249,10 @@ export class TripSocket {
         if (this.subscriptions.has(f.trip_id)) {
           this.subscriptions.set(f.trip_id, f.seq);
         }
-        this.emit("op", f);
+        this.emit("op", {
+          op: f,
+          self: f.client_op_id !== undefined && this.ownOpIds.has(f.client_op_id),
+        });
         if (f.client_op_id) {
           const pending = this.pending.get(f.client_op_id);
           if (pending) {

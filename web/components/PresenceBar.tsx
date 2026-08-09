@@ -2,63 +2,60 @@
 
 import { useTripSocket } from "@/context/TripSocketContext";
 import { useTripMembers } from "@/hooks/useTripMembers";
+import { avatarColor, initials } from "@/lib/avatar";
 
-const AVATAR_COLORS = [
-  "#f97316",
-  "#ec4899",
-  "#8b5cf6",
-  "#06b6d4",
-  "#22c55e",
-  "#eab308",
-  "#ef4444",
-  "#3b82f6",
-];
-
-function colorFor(userId: string): string {
-  let hash = 0;
-  for (let i = 0; i < userId.length; i++) hash = (hash * 31 + userId.charCodeAt(i)) >>> 0;
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  const first = parts[0]?.[0] ?? "?";
-  const second = parts.length > 1 ? parts[parts.length - 1][0] : "";
-  return (first + second).toUpperCase();
-}
-
+/** Who is connected to this trip right now.
+ *
+ *  The accent ring is the "live" language from the token system — it means "here now", which
+ *  is a different fact from "is a member" (that one is a row on the Members screen). */
 export function PresenceBar({ tripId }: { tripId: string }) {
   const { presence, status } = useTripSocket();
-  const names = useTripMembers(tripId);
+  const { names } = useTripMembers(tripId);
 
-  const uniqueUsers = new Map<string, string>();
-  for (const p of presence) uniqueUsers.set(p.user_id, p.joined_at);
+  // Collapsed by user, not by connection: two tabs is one person, and rendering them twice
+  // would make presence look like the trip is busier than it is.
+  const users = [...new Set(presence.map((p) => p.user_id))];
+  const shown = users.slice(0, 5);
+  const overflow = users.length - shown.length;
 
   return (
-    <div className="flex items-center gap-3" data-testid="presence-bar">
-      <div className="flex -space-x-2">
-        {[...uniqueUsers.keys()].map((userId) => {
+    <div className="flex items-center gap-2.5" data-testid="presence-bar">
+      <div className="flex -space-x-1.5">
+        {shown.map((userId) => {
           const label = names[userId] ?? userId.slice(0, 8);
           return (
-            <div
+            <span
               key={userId}
-              title={label}
+              title={`${label} — here now`}
               data-testid="presence-avatar"
-              className="flex h-8 w-8 items-center justify-center rounded-full border-2 border-white text-xs font-semibold text-white shadow-sm"
-              style={{ backgroundColor: colorFor(userId) }}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-ui-2xs font-semibold text-fg-inverse ring-2 ring-live"
+              style={{ backgroundColor: avatarColor(userId) }}
             >
               {initials(label)}
-            </div>
+            </span>
           );
         })}
-        {uniqueUsers.size === 0 && (
-          <span className="text-sm text-neutral-400">No one else here yet</span>
+        {overflow > 0 && (
+          <span
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-surface-sunken text-ui-2xs font-semibold text-fg-muted ring-2 ring-surface"
+            title={`${overflow} more here`}
+            data-numeric
+          >
+            +{overflow}
+          </span>
+        )}
+        {users.length === 0 && (
+          <span className="text-ui-xs text-fg-subtle">Only you here</span>
         )}
       </div>
       <span
-        className={`h-2 w-2 rounded-full ${status === "open" ? "bg-emerald-500" : "bg-neutral-300"}`}
+        aria-hidden
         title={`connection: ${status}`}
+        className={`h-1.5 w-1.5 rounded-full ${status === "open" ? "bg-live" : "bg-line-strong"}`}
       />
+      <span className="sr-only" role="status">
+        {status === "open" ? "Connected" : `Connection ${status}`}
+      </span>
     </div>
   );
 }

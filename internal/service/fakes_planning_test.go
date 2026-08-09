@@ -234,6 +234,21 @@ func (r *fakeMembers) List(_ context.Context, tripID domain.ID) ([]*domain.Membe
 	return out, nil
 }
 
+// ListProfiles mirrors the real join. The fake has no user table, so the display name is
+// derived from the user id — enough to prove the service returns one per member, which is
+// the only behaviour at this layer; the real join is covered by a repository test.
+func (r *fakeMembers) ListProfiles(ctx context.Context, tripID domain.ID) ([]*domain.MemberProfile, error) {
+	members, err := r.List(ctx, tripID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*domain.MemberProfile, 0, len(members))
+	for _, m := range members {
+		out = append(out, &domain.MemberProfile{Member: *m, DisplayName: "User " + m.UserID.String()[:8]})
+	}
+	return out, nil
+}
+
 func (r *fakeMembers) UpdateRole(_ context.Context, m *domain.Member) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()

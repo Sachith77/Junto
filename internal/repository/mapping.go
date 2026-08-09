@@ -109,6 +109,24 @@ func toDomainMember(row sqlcgen.TripMember) *domain.Member {
 	}
 }
 
+func toDomainMemberProfile(row sqlcgen.ListMemberProfilesRow) *domain.MemberProfile {
+	return &domain.MemberProfile{
+		Member: domain.Member{
+			ID:        row.ID,
+			TripID:    row.TripID,
+			UserID:    row.UserID,
+			Role:      domain.Role(row.Role),
+			InvitedBy: row.InvitedBy,
+			JoinedAt:  row.JoinedAt,
+			Version:   int(row.Version),
+			CreatedAt: row.CreatedAt,
+			UpdatedAt: row.UpdatedAt,
+			DeletedAt: row.DeletedAt,
+		},
+		DisplayName: row.DisplayName,
+	}
+}
+
 func toDomainInvitation(row sqlcgen.TripInvitation) *domain.Invitation {
 	inv := &domain.Invitation{
 		ID:        row.ID,

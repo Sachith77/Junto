@@ -110,6 +110,19 @@ type Member struct {
 	DeletedAt *time.Time
 }
 
+// MemberProfile is a membership AS RENDERED: the authorization row plus the one user field
+// every collaborative surface needs to show a person instead of a UUID.
+//
+// A separate read model rather than a field on Member, because Member is loaded by every
+// authorization check on every request and does not need a join to answer "may this caller
+// do this". Email is deliberately absent — a display name is enough to render an author, a
+// voter or a budget split, and showing every member's address to every viewer is a
+// disclosure the interface has no use for.
+type MemberProfile struct {
+	Member
+	DisplayName string
+}
+
 // Actor projects the membership into the authorization type used by services.
 func (m *Member) Actor() Actor {
 	return Actor{UserID: m.UserID, TripID: m.TripID, Role: m.Role}

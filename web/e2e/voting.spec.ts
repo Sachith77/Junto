@@ -61,6 +61,10 @@ test("presence shows both members, and votes/comments cast by one client update 
     await page.waitForURL(`/trips/${fixture.tripId}`);
     await page.locator('[data-testid="mode-card"][data-mode="plan"]').click();
     await page.waitForURL(`/trips/${fixture.tripId}/plan`);
+    // Group B split Plan into an itinerary and a per-slot decision page: options, votes and
+    // the discussion now live on the slot, so reaching them is one more real hop.
+    await page.getByTestId("slot-row").first().click();
+    await page.waitForURL(new RegExp(`/trips/${fixture.tripId}/plan/slots/`));
   }
 
   // Part A: presence. Both sockets are subscribed once each page's avatar stack shows both

@@ -27,11 +27,12 @@ func NewMembershipHandler(members *service.MembershipService, log *slog.Logger) 
 }
 
 type memberResponse struct {
-	UserID    string    `json:"user_id"`
-	Role      string    `json:"role"`
-	InvitedBy *string   `json:"invited_by,omitempty"`
-	JoinedAt  time.Time `json:"joined_at"`
-	Version   int       `json:"version"`
+	UserID      string    `json:"user_id"`
+	DisplayName string    `json:"display_name"`
+	Role        string    `json:"role"`
+	InvitedBy   *string   `json:"invited_by,omitempty"`
+	JoinedAt    time.Time `json:"joined_at"`
+	Version     int       `json:"version"`
 }
 
 func toMemberResponse(m *domain.Member) memberResponse {
@@ -42,6 +43,12 @@ func toMemberResponse(m *domain.Member) memberResponse {
 		id := m.InvitedBy.String()
 		out.InvitedBy = &id
 	}
+	return out
+}
+
+func toMemberProfileResponse(m *domain.MemberProfile) memberResponse {
+	out := toMemberResponse(&m.Member)
+	out.DisplayName = m.DisplayName
 	return out
 }
 
@@ -58,14 +65,14 @@ func (h *MembershipHandler) ListMembers(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	members, err := h.members.ListMembers(r.Context(), tripID, userID)
+	members, err := h.members.ListMemberProfiles(r.Context(), tripID, userID)
 	if err != nil {
 		writeError(w, r, err, h.log)
 		return
 	}
 	out := make([]memberResponse, 0, len(members))
 	for _, m := range members {
-		out = append(out, toMemberResponse(m))
+		out = append(out, toMemberProfileResponse(m))
 	}
 	writeData(w, http.StatusOK, out)
 }
