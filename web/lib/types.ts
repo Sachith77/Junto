@@ -31,9 +31,8 @@ export interface Member {
   invited_by?: string;
   joined_at: string;
   version: number;
-  // Populated client-side from /me when the row belongs to the current user; the backend
-  // does not join in a display name here (see membership_handler.go).
-  display_name?: string;
+  /** Joined from `users` by the member read model (domain.MemberProfile). */
+  display_name: string;
 }
 
 export type SlotKind = "place" | "activity" | "transport" | "lodging" | "note";

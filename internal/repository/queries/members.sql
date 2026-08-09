@@ -45,3 +45,18 @@ WHERE trip_id = @trip_id AND role = @role AND deleted_at IS NULL;
 SELECT EXISTS (
   SELECT 1 FROM trip_members WHERE trip_id = @trip_id AND user_id = @user_id
 );
+
+-- name: ListMemberProfiles :many
+-- The member list AS RENDERED: membership plus the one user field every collaborative
+-- surface needs to show a person rather than a UUID.
+--
+-- A read model, deliberately separate from ListMembers rather than replacing it. Membership
+-- is an authorization fact and is read on the hot path by every authz check; joining users
+-- there would tax that path to serve a screen. Email is NOT selected — display name is
+-- enough to render an author, a voter or a split, and broadcasting everyone's address to
+-- every viewer is a disclosure the UI does not need (the D53 instinct, one level down).
+SELECT m.*, u.display_name
+FROM trip_members m
+JOIN users u ON u.id = m.user_id
+WHERE m.trip_id = @trip_id AND m.deleted_at IS NULL
+ORDER BY (m.role = 'owner') DESC, m.joined_at ASC;

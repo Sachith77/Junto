@@ -358,6 +358,13 @@
     outline-color: var(--color-accent-400);
   }
 
+  /* Applied by the useLiveFlash hook to whatever a remote member just changed.
+     An attribute rather than a utility class so the rule lives beside the
+     keyframe it drives, and so no screen can invent its own version of it. */
+  [data-live] {
+    animation: var(--animate-live-flash);
+  }
+
   /* The live-flash is decorative reinforcement, never the only signal that
      something changed — the underlying value changes too. Users who ask for
      reduced motion simply do not get the flourish. */

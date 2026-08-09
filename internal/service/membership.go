@@ -75,6 +75,17 @@ func (s *MembershipService) ListMembers(ctx context.Context, tripID, userID doma
 	return s.members.List(ctx, tripID)
 }
 
+// ListMemberProfiles is ListMembers plus each member's display name, for the interface.
+//
+// Same authorization as ListMembers — any member may see who else is on the trip, which is
+// already true of every collaborative surface that shows an author or a voter.
+func (s *MembershipService) ListMemberProfiles(ctx context.Context, tripID, userID domain.ID) ([]*domain.MemberProfile, error) {
+	if _, err := s.actor(ctx, tripID, userID); err != nil {
+		return nil, err
+	}
+	return s.members.ListProfiles(ctx, tripID)
+}
+
 // UpdateRole changes a member's role.
 //
 // Ownership cannot be granted or revoked through this path. Transferring ownership is a

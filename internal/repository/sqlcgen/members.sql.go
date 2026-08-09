@@ -101,6 +101,68 @@ func (q *Queries) GetMember(ctx context.Context, arg GetMemberParams) (TripMembe
 	return i, err
 }
 
+const listMemberProfiles = `-- name: ListMemberProfiles :many
+SELECT m.id, m.trip_id, m.user_id, m.role, m.invited_by, m.joined_at, m.version, m.created_at, m.updated_at, m.deleted_at, u.display_name
+FROM trip_members m
+JOIN users u ON u.id = m.user_id
+WHERE m.trip_id = $1 AND m.deleted_at IS NULL
+ORDER BY (m.role = 'owner') DESC, m.joined_at ASC
+`
+
+type ListMemberProfilesRow struct {
+	ID          uuid.UUID
+	TripID      uuid.UUID
+	UserID      uuid.UUID
+	Role        string
+	InvitedBy   *uuid.UUID
+	JoinedAt    time.Time
+	Version     int32
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	DeletedAt   *time.Time
+	DisplayName string
+}
+
+// The member list AS RENDERED: membership plus the one user field every collaborative
+// surface needs to show a person rather than a UUID.
+//
+// A read model, deliberately separate from ListMembers rather than replacing it. Membership
+// is an authorization fact and is read on the hot path by every authz check; joining users
+// there would tax that path to serve a screen. Email is NOT selected — display name is
+// enough to render an author, a voter or a split, and broadcasting everyone's address to
+// every viewer is a disclosure the UI does not need (the D53 instinct, one level down).
+func (q *Queries) ListMemberProfiles(ctx context.Context, tripID uuid.UUID) ([]ListMemberProfilesRow, error) {
+	rows, err := q.db.Query(ctx, listMemberProfiles, tripID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListMemberProfilesRow{}
+	for rows.Next() {
+		var i ListMemberProfilesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.TripID,
+			&i.UserID,
+			&i.Role,
+			&i.InvitedBy,
+			&i.JoinedAt,
+			&i.Version,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.DisplayName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listMembers = `-- name: ListMembers :many
 SELECT id, trip_id, user_id, role, invited_by, joined_at, version, created_at, updated_at, deleted_at FROM trip_members
 WHERE trip_id = $1 AND deleted_at IS NULL

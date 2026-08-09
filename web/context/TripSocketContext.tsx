@@ -9,8 +9,9 @@ interface TripSocketState {
   tripId: string;
   status: ConnectionStatus;
   presence: PresenceMember[];
-  /** Registers a listener for every committed op on this trip. Returns an unsubscribe fn. */
-  onOp: (handler: (op: OpFrame) => void) => () => void;
+  /** Registers a listener for every committed op on this trip. Returns an unsubscribe fn.
+   *  `self` says whether this client caused the op — see DeliveredOp. */
+  onOp: (handler: (op: OpFrame, meta: { self: boolean }) => void) => () => void;
   sendOp: (input: {
     kind: string;
     entityId: string;
@@ -37,7 +38,7 @@ export function TripSocketProvider({
   const [status, setStatus] = useState<ConnectionStatus>(() => getTripSocket().getStatus());
   const [presence, setPresence] = useState<PresenceMember[]>([]);
   const [resyncSignal, setResyncSignal] = useState(0);
-  const opHandlers = useRef(new Set<(op: OpFrame) => void>());
+  const opHandlers = useRef(new Set<(op: OpFrame, meta: { self: boolean }) => void>());
   const presenceRef = useRef(new Map<string, PresenceMember>());
 
   useEffect(() => {
@@ -63,9 +64,9 @@ export function TripSocketProvider({
       }
       setPresence([...presenceRef.current.values()]);
     });
-    const offOp = socket.on("op", (op) => {
+    const offOp = socket.on("op", ({ op, self }) => {
       if (op.trip_id !== tripId) return;
-      for (const h of opHandlers.current) h(op);
+      for (const h of opHandlers.current) h(op, { self });
     });
     const offResync = socket.on("resync", ({ tripId: t }) => {
       if (t !== tripId) return;

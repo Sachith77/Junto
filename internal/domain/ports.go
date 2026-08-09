@@ -332,6 +332,9 @@ type MembershipRepository interface {
 	Add(ctx context.Context, m *Member) error
 	Get(ctx context.Context, tripID, userID ID) (*Member, error)
 	List(ctx context.Context, tripID ID) ([]*Member, error)
+	// ListProfiles is List plus each member's display name — the read model the UI needs
+	// (see MemberProfile). Kept separate so the authorization path stays join-free.
+	ListProfiles(ctx context.Context, tripID ID) ([]*MemberProfile, error)
 	UpdateRole(ctx context.Context, m *Member) error
 	Remove(ctx context.Context, tripID, userID ID, at time.Time) error
 	CountByRole(ctx context.Context, tripID ID, role Role) (int, error)

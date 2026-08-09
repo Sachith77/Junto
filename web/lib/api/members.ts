@@ -18,3 +18,24 @@ export async function createInvitation(
 export async function acceptInvitation(token: string): Promise<Trip> {
   return apiFetch<Trip>("/api/v1/invitations/accept", { method: "POST", body: { token } });
 }
+
+export interface Invitation {
+  id: string;
+  email?: string;
+  role: "editor" | "viewer";
+  max_uses?: number;
+  use_count: number;
+  expires_at: string;
+  revoked_at?: string;
+  created_at: string;
+}
+
+export async function listInvitations(tripId: string): Promise<Invitation[]> {
+  return apiFetch<Invitation[]>(`/api/v1/trips/${tripId}/invitations`);
+}
+
+export async function revokeInvitation(tripId: string, invitationId: string): Promise<void> {
+  await apiFetch<void>(`/api/v1/trips/${tripId}/invitations/${invitationId}`, {
+    method: "DELETE",
+  });
+}

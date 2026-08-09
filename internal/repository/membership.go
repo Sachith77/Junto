@@ -63,6 +63,18 @@ func (r *MembershipRepository) List(ctx context.Context, tripID domain.ID) ([]*d
 	return out, nil
 }
 
+func (r *MembershipRepository) ListProfiles(ctx context.Context, tripID domain.ID) ([]*domain.MemberProfile, error) {
+	rows, err := r.q(ctx).ListMemberProfiles(ctx, tripID)
+	if err != nil {
+		return nil, mapError("membership", err)
+	}
+	out := make([]*domain.MemberProfile, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, toDomainMemberProfile(row))
+	}
+	return out, nil
+}
+
 func (r *MembershipRepository) UpdateRole(ctx context.Context, m *domain.Member) error {
 	q := r.q(ctx)
 	row, err := q.UpdateMemberRole(ctx, sqlcgen.UpdateMemberRoleParams{

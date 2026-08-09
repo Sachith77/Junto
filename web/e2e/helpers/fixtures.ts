@@ -81,13 +81,19 @@ export async function signupVerifiedUser(prefix: string): Promise<FixtureUser> {
   const password = "correct horse battery staple";
   const displayName = `${prefix} ${unique.slice(0, 4)}`;
 
-  await api("/api/v1/auth/signup", {
+  const created = await api<{ email_verified_at: string | null }>("/api/v1/auth/signup", {
     method: "POST",
     body: JSON.stringify({ email, password, display_name: displayName }),
   });
 
-  const token = await waitForToken(email, "verify-email");
-  await api("/api/v1/auth/verify-email", { method: "POST", body: JSON.stringify({ token }) });
+  // Branch on what the server actually returned, exactly as the signup screen does. With
+  // AUTH_AUTO_VERIFY_EMAIL on (D105) no verification mail is sent at all, so waiting for one
+  // would hang — and a fixture that hard-codes one of the two modes silently ties the whole
+  // e2e suite to a development flag.
+  if (!created.email_verified_at) {
+    const token = await waitForToken(email, "verify-email");
+    await api("/api/v1/auth/verify-email", { method: "POST", body: JSON.stringify({ token }) });
+  }
 
   const session = await api<{ access_token: string; user: { id: string } }>(
     "/api/v1/auth/login",

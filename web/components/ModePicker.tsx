@@ -49,9 +49,8 @@ const MODES: Mode[] = [
     name: "Memories",
     tagline: "After you're home",
     blurb: "The trip as it happened — photos and notes gathered against the places you went.",
-    href: null,
+    href: "memories",
     seed: "dusk",
-    status: "Coming next",
   },
 ];
 

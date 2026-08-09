@@ -8,6 +8,7 @@ import { TripSocketProvider } from "@/context/TripSocketContext";
 import { getTrip } from "@/lib/api/trips";
 import type { Trip } from "@/lib/types";
 import { PresenceBar } from "./PresenceBar";
+import { PlanNav } from "./plan/PlanNav";
 
 /** Auth guard + socket subscription, with NO visual chrome.
  *
@@ -24,6 +25,20 @@ export function TripShell({ tripId, children }: { tripId: string; children: Reac
     if (status === "anonymous") router.replace("/login");
   }, [status, router]);
 
+  // A hard navigation drops the in-memory access token (D30) and has to restore it via
+  // /auth/refresh, which takes a round trip. Returning null there paints a completely blank
+  // page for as long as that takes — the exact "no data rendered as an empty screen" failure
+  // the design brief calls out, and it is worst on the cinematic screens where the blank is
+  // full-bleed. Render the frame instead, and let each screen show its own skeleton.
+  if (status === "loading") {
+    return (
+      <div className="flex min-h-full flex-1 items-center justify-center bg-surface">
+        <span role="status" className="text-ui-sm text-fg-subtle">
+          Loading trip…
+        </span>
+      </div>
+    );
+  }
   if (status !== "authenticated") return null;
 
   return (
@@ -70,6 +85,9 @@ export function PlanChrome({ tripId, children }: { tripId: string; children: Rea
           <PresenceBar tripId={tripId} />
         </div>
       </header>
+      <div className="mx-auto w-full max-w-5xl px-5">
+        <PlanNav tripId={tripId} />
+      </div>
       <main className="mx-auto w-full max-w-5xl flex-1 px-5 py-8">{children}</main>
     </>
   );
