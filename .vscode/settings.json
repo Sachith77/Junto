@@ -1,0 +1,10 @@
+{
+  // Tailwind v4 moved the design-token declaration into CSS itself (`@theme`), which
+  // VSCode's built-in CSS validator predates and reports as "Unknown at rule". It is the
+  // one and only diagnostic the project produces — tsc, eslint and go vet are all silent —
+  // and silencing the whole unknown-at-rule check is the standard fix rather than a
+  // suppression comment per occurrence, because every new Tailwind at-rule would need one.
+  "css.lint.unknownAtRules": "ignore",
+  "scss.lint.unknownAtRules": "ignore",
+  "less.lint.unknownAtRules": "ignore"
+}

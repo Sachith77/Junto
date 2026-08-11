@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/junto/junto/internal/domain"
@@ -314,10 +315,12 @@ func TestInvitationRedemptionAddsMembership(t *testing.T) {
 	joiner := h.makeUser(t, email)
 	trip := h.makeTrip(t, owner)
 
-	// CreateInvitation deliberately never returns the raw token — only its hash is stored,
-	// by design (D9's reasoning applied here too: a stored secret is a liability). The raw
-	// value exists exactly once, in the mailed link, which is where this test recovers it —
-	// the same path a real invitee follows.
+	// For a TARGETED invite, CreateInvitation deliberately does not return the raw token —
+	// only its hash is stored (D9's reasoning applied here too: a stored secret is a
+	// liability), and the raw value goes to the address the invite names and nowhere else.
+	// So this test recovers it from the mailed link, the same path a real invitee follows.
+	// (A LINK invite has no inbox to deliver to, so that one does come back on the response
+	// as CreatedInvitation.AcceptURL — covered by TestLinkInviteReturnsARedeemableAcceptURL.)
 	if _, err := h.members.CreateInvitation(ctx, trip.ID, owner.ID, CreateInvitationInput{
 		Email: &email, Role: domain.RoleEditor,
 	}); err != nil {
@@ -343,6 +346,90 @@ func TestInvitationRedemptionAddsMembership(t *testing.T) {
 	}
 	if member.Role != domain.RoleEditor {
 		t.Errorf("role = %q, want editor (the invitation's granted role)", member.Role)
+	}
+}
+
+// TestLinkInviteReturnsARedeemableAcceptURL pins the half of invitation delivery that has no
+// inbox behind it. A link invite (Email nil) sends no mail, so if the raw token is not handed
+// back on the create call it is gone the instant the function returns — the invitation row
+// exists, looks perfectly healthy in a listing, and can never be redeemed by anyone.
+//
+// The assertion is deliberately end-to-end rather than "AcceptURL is non-empty": a URL that
+// is returned but malformed, or built against the wrong route, fails in exactly the way an
+// absent one does from the invitee's side. So the test pulls the token back out of the URL
+// and redeems it, which is what the person receiving the pasted link actually does.
+//
+// Verified against a planted break: returning `out` with AcceptURL left unset fails here with
+// "no token in accept url", while every other invitation test stays green — which is the
+// point, since that was the real state of this code before the field existed.
+func TestLinkInviteReturnsARedeemableAcceptURL(t *testing.T) {
+	h := newPlanningHarness(t)
+	ctx := context.Background()
+	owner := h.makeUser(t, "owner@example.com")
+	joiner := h.makeUser(t, "joiner@example.com")
+	trip := h.makeTrip(t, owner)
+
+	created, err := h.members.CreateInvitation(ctx, trip.ID, owner.ID, CreateInvitationInput{
+		Email: nil, Role: domain.RoleEditor, MaxUses: nil,
+	})
+	if err != nil {
+		t.Fatalf("creating a link invitation: %v", err)
+	}
+	if created.AcceptURL == "" {
+		t.Fatal("a link invite must return its accept URL: nothing else can ever produce it")
+	}
+	if _, sent := h.mailerFake.Last(); sent {
+		t.Error("a link invite has no address to mail; nothing should have been sent")
+	}
+
+	const wantPrefix = "https://junto.test/invitations/accept?token="
+	if !strings.HasPrefix(created.AcceptURL, wantPrefix) {
+		t.Fatalf("accept url = %q, want prefix %q", created.AcceptURL, wantPrefix)
+	}
+	token := extractTokenFromBody(t, created.AcceptURL)
+	if token == "" {
+		t.Fatalf("no token in accept url: %q", created.AcceptURL)
+	}
+
+	joined, err := h.members.RedeemInvitation(ctx, joiner.ID, token)
+	if err != nil {
+		t.Fatalf("redeeming the link: %v", err)
+	}
+	if joined.ID != trip.ID {
+		t.Errorf("redeemed trip = %v, want %v", joined.ID, trip.ID)
+	}
+	member, err := h.membersFake.Get(ctx, trip.ID, joiner.ID)
+	if err != nil {
+		t.Fatalf("expected the link redeemer to be a member: %v", err)
+	}
+	if member.Role != domain.RoleEditor {
+		t.Errorf("role = %q, want editor", member.Role)
+	}
+}
+
+// TestTargetedInviteWithholdsItsAcceptURL is the other half of the rule, and it is the one
+// that would rot silently: widening the link-invite fix to "always return the URL" leaves
+// every test above green, because they all recover the token from the mail. What it would
+// quietly cost is D58 — the address check only means something while the token goes to that
+// address and nowhere else.
+func TestTargetedInviteWithholdsItsAcceptURL(t *testing.T) {
+	h := newPlanningHarness(t)
+	ctx := context.Background()
+	owner := h.makeUser(t, "owner@example.com")
+	trip := h.makeTrip(t, owner)
+	email := "invitee@example.com"
+
+	created, err := h.members.CreateInvitation(ctx, trip.ID, owner.ID, CreateInvitationInput{
+		Email: &email, Role: domain.RoleEditor,
+	})
+	if err != nil {
+		t.Fatalf("creating invitation: %v", err)
+	}
+	if created.AcceptURL != "" {
+		t.Errorf("a targeted invite must not hand its token back to the inviter, got %q", created.AcceptURL)
+	}
+	if _, sent := h.mailerFake.Last(); !sent {
+		t.Error("a targeted invite must be delivered by email")
 	}
 }
 

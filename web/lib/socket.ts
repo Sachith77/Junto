@@ -1,5 +1,6 @@
 import { WS_URL } from "./config";
 import { mintWsTicket } from "./api/wsTicket";
+import { RawHttpError } from "./http";
 import type {
   ErrorFrame,
   OpFrame,
@@ -10,7 +11,16 @@ import type {
   SubscribedFrame,
 } from "./types";
 
-export type ConnectionStatus = "idle" | "connecting" | "open" | "reconnecting" | "closed";
+/** "unauthorized" is terminal and distinct from "closed": closed means this client hung up,
+ *  unauthorized means the server will not issue a handshake ticket any more. Merging the two
+ *  would make a revoked session look like a deliberate disconnect and hide it from the UI. */
+export type ConnectionStatus =
+  | "idle"
+  | "connecting"
+  | "open"
+  | "reconnecting"
+  | "closed"
+  | "unauthorized";
 
 /** An op as delivered to the UI, tagged with whether THIS client caused it.
  *
@@ -183,8 +193,22 @@ export class TripSocket {
     try {
       ticket = (await mintWsTicket()).ticket;
     } catch (err) {
+      // Do NOT rethrow. scheduleReconnect() IS the handling, and the only callers are
+      // subscribe() and the reconnect timer's own `void this.connect()` — so a rethrow
+      // becomes an unhandled promise rejection per attempt, which is a Runtime Error in the
+      // dev overlay every few seconds and nothing at all in production. Observed: a revoked
+      // session produced a counter climbing 2 errors per retry, indefinitely.
+      if (err instanceof RawHttpError && err.status === 401) {
+        // The ticket call already refreshed and retried (see apiFetchRaw). A 401 that
+        // survives that means the SESSION is gone — revoked, logged out, or password reset
+        // (D91) — and no amount of retrying fixes it. Stop, and let the auth layer decide
+        // what happens next; retrying forever is what produced the storm.
+        this.closedByCaller = true;
+        this.setStatus("unauthorized");
+        return;
+      }
       this.scheduleReconnect();
-      throw err;
+      return;
     }
 
     await new Promise<void>((resolve, reject) => {
@@ -232,7 +256,9 @@ export class TripSocket {
     const delay = Math.min(500 * 2 ** this.reconnectAttempt, MAX_BACKOFF_MS);
     this.reconnectAttempt += 1;
     this.reconnectTimer = setTimeout(() => {
-      void this.connect();
+      // connect() is written not to reject, but a `void`ed promise is one refactor away from
+      // being an unhandled rejection again, so the catch stays as the belt to that braces.
+      this.connect().catch(() => {});
     }, delay);
   }
 

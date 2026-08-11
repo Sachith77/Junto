@@ -5,13 +5,25 @@ export async function listMembers(tripId: string): Promise<Member[]> {
   return apiFetch<Member[]>(`/api/v1/trips/${tripId}/members`);
 }
 
+export interface CreatedInvitation extends Invitation {
+  /** Present for LINK invites only (no email), and only on this response — the server stores
+   *  a hash, so nothing can produce this URL again. Show it now or the link is lost. */
+  accept_url?: string;
+}
+
 export async function createInvitation(
   tripId: string,
-  input: { email?: string; role: "editor" | "viewer"; maxUses?: number }
-): Promise<{ id: string }> {
+  input: { email?: string; role: "editor" | "viewer"; maxUses?: number | null }
+): Promise<CreatedInvitation> {
   return apiFetch(`/api/v1/trips/${tripId}/invitations`, {
     method: "POST",
-    body: { email: input.email ?? null, role: input.role, max_uses: input.maxUses ?? null },
+    body: {
+      email: input.email ?? null,
+      role: input.role,
+      // null means unlimited. Distinct from undefined, which would let the server apply its
+      // own default (1 for an addressed invite) — so it is passed through deliberately.
+      max_uses: input.maxUses ?? null,
+    },
   });
 }
 

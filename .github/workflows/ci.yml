@@ -132,3 +132,67 @@ jobs:
             echo "::error::total coverage ${pct}% is below the 75% floor"
             exit 1
           fi
+
+  # The Dockerfile is deploy-critical and, until this job existed, nothing executed it — which
+  # is the precise shape of every claim in CLAUDE.md that quietly stopped being true (D104, and
+  # the phantom frontend component tests). A Dockerfile only breaks at deploy time, in front of
+  # whoever is watching, so it is built on every PR instead.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 is load-bearing here, not a default worth trimming. Go stamps
+      # vcs.revision into the binary from the git metadata present in the build context, and
+      # /healthz reports it as the running version. A shallow or .git-less context makes every
+      # image report "dev", which defeats the one question the endpoint exists to answer.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Only for `go version -m`, to read the VCS stamp out of the built binary.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Build the image
+        run: docker build -t junto-api:ci .
+
+      - name: The binary must actually execute inside the image
+        # `scratch` has no dynamic loader, so a build that accidentally links libc produces an
+        # image whose only symptom is exec failing with "no such file or directory" — a message
+        # that names the binary and reads as a bad COPY. Nothing but running it catches that.
+        #
+        # With no configuration the process must reach its OWN validation and refuse to start.
+        # Asserting that specific message, rather than merely a non-zero exit, is what
+        # distinguishes "the binary ran and rejected the config" from "the binary never ran" —
+        # both of which exit non-zero. That distinction is the entire point of the step.
+        run: |
+          output=$(docker run --rm junto-api:ci 2>&1 || true)
+          echo "$output"
+          if ! echo "$output" | grep -q "startup failed"; then
+            echo "::error::the image did not reach config validation — likely a static-link \
+          or base-image regression, not a config problem"
+            exit 1
+          fi
+
+      - name: The image must report a real git revision, not "dev"
+        # /healthz reports this, and it is the fastest way to confirm which build is serving.
+        # It comes from the VCS stamp Go embeds at build time, which silently degrades to
+        # nothing when git is missing from the builder or .git from the context — so the
+        # endpoint keeps working while quietly answering "dev" forever.
+        #
+        # Asserting the expected revision rather than `!= "dev"`, because "not dev" is also
+        # satisfied by an empty string or a truncated read.
+        run: |
+          expected=$(git rev-parse HEAD | cut -c1-12)
+          echo "expected revision: ${expected}"
+          # Read the stamp out of the binary the image actually ships, rather than starting the
+          # server and scraping a log line — there is no configuration here for it to boot with.
+          docker create --name junto-ci-extract junto-api:ci > /dev/null
+          docker cp junto-ci-extract:/api /tmp/api-bin
+          docker rm junto-ci-extract > /dev/null
+          if ! go version -m /tmp/api-bin | grep -q "vcs.revision=${expected}"; then
+            echo "::error::image reports no or wrong vcs.revision; /healthz would answer \"dev\""
+            go version -m /tmp/api-bin | grep vcs || true
+            exit 1
+          fi
+          echo "vcs.revision=${expected} is stamped into the shipped binary"

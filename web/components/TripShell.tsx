@@ -20,10 +20,34 @@ import { PlanNav } from "./plan/PlanNav";
 export function TripShell({ tripId, children }: { tripId: string; children: React.ReactNode }) {
   const { status } = useAuth();
   const router = useRouter();
+  // Tagged with the trip it describes rather than reset synchronously when tripId changes:
+  // a bare setAccess("checking") in the effect body is a cascading render, and deriving
+  // "checking" from a stale tag gets the same result without one.
+  const [checked, setChecked] = useState<{ id: string; state: "ok" | "denied" } | null>(null);
+  const access = checked?.id === tripId ? checked.state : "checking";
 
   useEffect(() => {
     if (status === "anonymous") router.replace("/login");
   }, [status, router]);
+
+  // Confirm the trip is readable BEFORE rendering any of its screens.
+  //
+  // A non-member gets 404 from every trip-scoped route by design (D53 — confirming a trip
+  // exists to someone with no access is itself a disclosure). Each screen used to swallow
+  // that and fall back to its empty state, so the whole of Plan mode rendered as a trip with
+  // no days, under a title stuck at "…" — indistinguishable from a trip that simply hasn't
+  // been filled in yet, and reported as "Plan mode doesn't load". The 404 is correct; showing
+  // it as emptiness was not.
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    let cancelled = false;
+    getTrip(tripId)
+      .then(() => !cancelled && setChecked({ id: tripId, state: "ok" }))
+      .catch(() => !cancelled && setChecked({ id: tripId, state: "denied" }));
+    return () => {
+      cancelled = true;
+    };
+  }, [tripId, status]);
 
   // A hard navigation drops the in-memory access token (D30) and has to restore it via
   // /auth/refresh, which takes a round trip. Returning null there paints a completely blank
@@ -40,6 +64,36 @@ export function TripShell({ tripId, children }: { tripId: string; children: Reac
     );
   }
   if (status !== "authenticated") return null;
+
+  if (access === "denied") {
+    return (
+      <div className="flex min-h-full flex-1 flex-col items-center justify-center gap-4 bg-surface px-5 text-center">
+        <h1 className="font-display text-display-md text-fg">This trip isn&apos;t available</h1>
+        <p className="max-w-sm text-ui-sm text-fg-muted">
+          It may have been deleted, or you may not be a member of it. If someone invited you,
+          open the link in your invitation email to join.
+        </p>
+        <Link
+          href="/trips"
+          className="rounded-sm text-ui-sm text-accent underline-offset-4 hover:underline"
+        >
+          Go to your trips
+        </Link>
+      </div>
+    );
+  }
+
+  // Don't open a socket or mount a screen until access is confirmed: subscribing to a trip the
+  // caller can't read just fails on the server side and leaves the UI in a fake live state.
+  if (access === "checking") {
+    return (
+      <div className="flex min-h-full flex-1 items-center justify-center bg-surface">
+        <span role="status" className="text-ui-sm text-fg-subtle">
+          Loading trip…
+        </span>
+      </div>
+    );
+  }
 
   return (
     <TripSocketProvider tripId={tripId}>

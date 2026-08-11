@@ -284,8 +284,16 @@ func run() error {
 		AllowedOrigins: cfg.HTTP.CORSAllowedOrigins,
 	})
 
+	health := junto.NewHealthHandler(junto.HealthConfig{
+		Version: buildVersion(),
+		Timeout: cfg.HTTP.ProbeTimeout,
+		Logger:  logger,
+		Probes:  healthProbes(pool, redisClient),
+	})
+
 	router, cleanupRouter := junto.NewRouter(junto.Deps{
 		WS:       wsHandlers,
+		Health:   health,
 		Auth:     authService,
 		Trips:    tripService,
 		Members:  membershipService,
@@ -328,6 +336,32 @@ func run() error {
 		return fmt.Errorf("http server: %w", err)
 	case <-ctx.Done():
 		logger.Info("shutdown signal received")
+	}
+
+	// Fail readiness FIRST, then keep serving for a while.
+	//
+	// This ordering is the whole reason the drain delay exists. server.Shutdown stops
+	// accepting new connections immediately, but the load balancer does not know that until
+	// its next probe fails — so between those two moments it is still routing requests to a
+	// socket that refuses them, and every one of those is a 502 caused by the deployment
+	// rather than by anything being wrong. Going unready first and then waiting means the
+	// probe fails while the process is still happily serving, the instance leaves the pool
+	// with zero errors, and only then does the listener close.
+	//
+	// The delay must therefore exceed the platform's probe interval times its failure
+	// threshold; configs.HTTPConfig.DrainDelay says so where the number is set.
+	health.BeginDraining()
+	if cfg.HTTP.DrainDelay > 0 {
+		logger.Info("draining: readiness is now failing, still serving in-flight traffic",
+			"drain_delay", cfg.HTTP.DrainDelay)
+		drain := time.NewTimer(cfg.HTTP.DrainDelay)
+		select {
+		case <-drain.C:
+		case err := <-serverErr:
+			// The listener died under us mid-drain. Nothing left to drain gracefully.
+			drain.Stop()
+			return fmt.Errorf("http server during drain: %w", err)
+		}
 	}
 
 	// Shutdown gets a FRESH context. The parent is already cancelled by the signal, so

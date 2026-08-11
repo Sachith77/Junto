@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { getSlot, selectOption } from "@/lib/api/slots";
-import { listOptions } from "@/lib/api/options";
+import { createOption, listOptions } from "@/lib/api/options";
 import { listVotes } from "@/lib/api/votes";
+import { Button } from "@/components/ui/Button";
+import { ApiError } from "@/lib/http";
 import { useAuth } from "@/context/AuthContext";
 import { useTripSocket } from "@/context/TripSocketContext";
 import { useTripMembers } from "@/hooks/useTripMembers";
@@ -197,7 +199,9 @@ export function SlotDetail({ tripId, slotId }: { tripId: string; slotId: string 
           <div className="rounded-card border border-dashed border-line bg-surface-raised px-6 py-12 text-center">
             <p className="text-ui-md font-medium text-fg">No options proposed yet</p>
             <p className="mx-auto mt-1 max-w-sm text-ui-sm text-fg-muted">
-              Someone needs to suggest a candidate before the group has anything to vote on.
+              {canResolve
+                ? "Suggest a candidate below and the group has something to vote on."
+                : "Someone needs to suggest a candidate before the group has anything to vote on."}
             </p>
           </div>
         ) : (
@@ -224,6 +228,14 @@ export function SlotDetail({ tripId, slotId }: { tripId: string; slotId: string 
           </div>
         )}
 
+        {canResolve && (
+          <AddOption
+            tripId={tripId}
+            slotId={slotId}
+            onAdded={() => fetchAll().then(apply).catch(() => {})}
+          />
+        )}
+
         {/* Spelling out the D41 distinction in words, once, where the decision is made. */}
         {options.length > 0 && (
           <p className="mt-3 text-ui-xs text-fg-subtle">
@@ -238,5 +250,118 @@ export function SlotDetail({ tripId, slotId }: { tripId: string; slotId: string 
         <CommentThread tripId={tripId} slotId={slotId} />
       </section>
     </div>
+  );
+}
+
+/** Proposing a candidate. REST rather than an op frame, matching how the option list is read
+ *  — the write still reaches the log through the service layer (Rule 3), so every other
+ *  client sees it live through option.create.v1 either way. */
+function AddOption({
+  tripId,
+  slotId,
+  onAdded,
+}: {
+  tripId: string;
+  slotId: string;
+  onAdded: () => void | Promise<void>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [notes, setNotes] = useState("");
+  const [url, setUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await createOption(tripId, slotId, {
+        title: title.trim(),
+        notes: notes.trim(),
+        externalUrl: url.trim(),
+      });
+      setTitle("");
+      setNotes("");
+      setUrl("");
+      await onAdded();
+    } catch (err) {
+      setError(
+        err instanceof ApiError
+          ? (err.violations[0]?.message ?? err.message)
+          : "Couldn't add that option."
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        data-testid="add-option-open"
+        className="mt-3 w-full rounded-card border border-dashed border-line px-4 py-3 text-ui-sm text-fg-subtle transition-colors hover:border-line-strong hover:text-fg"
+      >
+        + Propose an option
+      </button>
+    );
+  }
+
+  return (
+    <form
+      onSubmit={(e) => void submit(e)}
+      data-testid="add-option-form"
+      className="mt-3 space-y-2 rounded-card border border-line bg-surface-raised p-4"
+    >
+      <input
+        autoFocus
+        value={title}
+        onChange={(e) => setTitle(e.target.value)}
+        placeholder="Candidate — e.g. Taberna Rua das Flores"
+        aria-label="Option title"
+        data-testid="add-option-title"
+        className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-ui-md text-fg placeholder:text-fg-subtle focus:border-accent focus:outline-none"
+      />
+      <input
+        value={url}
+        onChange={(e) => setUrl(e.target.value)}
+        placeholder="Link (optional)"
+        aria-label="Link"
+        inputMode="url"
+        className="w-full rounded-sm border border-line bg-surface px-3 py-2 text-ui-sm text-fg placeholder:text-fg-subtle focus:border-accent focus:outline-none"
+      />
+      <textarea
+        value={notes}
+        onChange={(e) => setNotes(e.target.value)}
+        rows={2}
+        placeholder="Why this one? (optional)"
+        aria-label="Notes"
+        className="w-full resize-y rounded-sm border border-line bg-surface px-3 py-2 text-ui-sm text-fg placeholder:text-fg-subtle focus:border-accent focus:outline-none"
+      />
+      {error && (
+        <p role="alert" className="text-ui-xs text-critical-700">
+          {error}
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        <Button type="submit" disabled={busy || !title.trim()} data-testid="add-option-submit">
+          Propose
+        </Button>
+        <button
+          type="button"
+          onClick={() => {
+            setOpen(false);
+            setError(null);
+          }}
+          className="rounded-sm px-1 text-ui-sm text-fg-subtle transition-colors hover:text-fg"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   );
 }

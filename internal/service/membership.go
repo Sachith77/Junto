@@ -148,8 +148,25 @@ type CreateInvitationInput struct {
 	MaxUses *int
 }
 
-// CreateInvitation issues an invitation and, for a targeted email invite, sends it.
-func (s *MembershipService) CreateInvitation(ctx context.Context, tripID, userID domain.ID, in CreateInvitationInput) (*domain.Invitation, error) {
+// CreatedInvitation is a freshly issued invitation together with its redemption link, for
+// the one caller that is entitled to see it: the person who just issued it.
+type CreatedInvitation struct {
+	Invitation *domain.Invitation
+
+	// AcceptURL is the redemption link, raw token included. It is set for LINK invites only
+	// (Email nil), and it exists only on this return value: the store keeps a hash, so no
+	// later call can rebuild it. A caller that does not surface it here has issued a link
+	// nobody can ever redeem — which is exactly what this field was added to fix.
+	//
+	// A targeted invite deliberately does NOT get one back. Its token goes to the address it
+	// names and nowhere else, which is half of what makes D58's email check mean something;
+	// an inviter who wants a link they can paste asks for a link invite.
+	AcceptURL string
+}
+
+// CreateInvitation issues an invitation and, for a targeted email invite, sends it. For a
+// link invite it returns the redemption URL, which is the only moment that URL exists.
+func (s *MembershipService) CreateInvitation(ctx context.Context, tripID, userID domain.ID, in CreateInvitationInput) (*CreatedInvitation, error) {
 	actor, err := s.require(ctx, tripID, userID, domain.CapInviteMembers)
 	if err != nil {
 		return nil, err
@@ -177,10 +194,13 @@ func (s *MembershipService) CreateInvitation(ctx context.Context, tripID, userID
 		return nil, err
 	}
 
+	out := &CreatedInvitation{Invitation: inv}
 	if inv.Email != nil {
 		s.sendInvitationEmail(ctx, tripID, *inv.Email, token.Raw)
+	} else {
+		out.AcceptURL = s.invitationLink(token.Raw)
 	}
-	return inv, nil
+	return out, nil
 }
 
 // ListInvitations returns a trip's outstanding invitations.
@@ -269,13 +289,21 @@ func (s *MembershipService) RedeemInvitation(ctx context.Context, userID domain.
 	return trip, nil
 }
 
+// invitationLink builds the redemption URL for a raw token. One definition, used by both the
+// mailed link and the link handed back to a link inviter — two copies of this format string
+// would be two things to keep in step with the frontend's accept route. No escaping: a
+// secrets token is base64url by construction (pkg/secrets), so it is already query-safe.
+func (s *MembershipService) invitationLink(rawToken string) string {
+	return fmt.Sprintf("%s/invitations/accept?token=%s", s.cfg.WebBaseURL, rawToken)
+}
+
 func (s *MembershipService) sendInvitationEmail(ctx context.Context, tripID domain.ID, to, rawToken string) {
 	trip, err := s.trips.GetByID(ctx, tripID)
 	if err != nil {
 		s.log.ErrorContext(ctx, "loading trip for invitation email failed", "error", err)
 		return
 	}
-	link := fmt.Sprintf("%s/invitations/accept?token=%s", s.cfg.WebBaseURL, rawToken)
+	link := s.invitationLink(rawToken)
 	err = s.mailer.Send(ctx, domain.EmailMessage{
 		To:      to,
 		Subject: fmt.Sprintf("You're invited to plan %q on Junto", trip.Name),

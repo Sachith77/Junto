@@ -604,7 +604,7 @@ func TestListAndRevokeInvitationsRequireCapability(t *testing.T) {
 	h.addMember(t, trip.ID, viewer, domain.RoleViewer)
 
 	email := "invitee@example.com"
-	inv, err := h.members.CreateInvitation(ctx, trip.ID, owner.ID, CreateInvitationInput{
+	created, err := h.members.CreateInvitation(ctx, trip.ID, owner.ID, CreateInvitationInput{
 		Email: &email, Role: domain.RoleEditor,
 	})
 	if err != nil {
@@ -619,10 +619,10 @@ func TestListAndRevokeInvitationsRequireCapability(t *testing.T) {
 		t.Fatalf("the owner listing invitations: %v (%d)", err, len(list))
 	}
 
-	if err := h.members.RevokeInvitation(ctx, trip.ID, viewer.ID, inv.ID); !errors.Is(err, domain.ErrForbidden) {
+	if err := h.members.RevokeInvitation(ctx, trip.ID, viewer.ID, created.Invitation.ID); !errors.Is(err, domain.ErrForbidden) {
 		t.Errorf("a viewer revoking an invitation must be forbidden, got %v", err)
 	}
-	if err := h.members.RevokeInvitation(ctx, trip.ID, owner.ID, inv.ID); err != nil {
+	if err := h.members.RevokeInvitation(ctx, trip.ID, owner.ID, created.Invitation.ID); err != nil {
 		t.Fatalf("the owner revoking the invitation: %v", err)
 	}
 
