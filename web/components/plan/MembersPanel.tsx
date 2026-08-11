@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createInvitation,
   listInvitations,
@@ -32,6 +32,13 @@ export function MembersPanel({ tripId }: { tripId: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  // The freshly minted link, held in component state because there is nowhere else it could
+  // come from: the server stores only a hash, so this URL exists in this browser tab or not
+  // at all. Navigating away loses it, which is why the panel says so.
+  const [link, setLink] = useState<{ url: string; role: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const linkRef = useRef<HTMLInputElement>(null);
 
   // Inviting is granted to editors, but managing members and revoking is owner-only (D57).
   const canInvite = myRole === "owner" || myRole === "editor";
@@ -79,6 +86,55 @@ export function MembersPanel({ tripId }: { tripId: string }) {
       );
     } finally {
       setBusy(false);
+    }
+  };
+
+  // A link invite carries no address, so nothing is emailed and the token comes back on the
+  // response instead. Unlimited uses by default — the point of a link is a group chat.
+  const createLink = async () => {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    setCopied(false);
+    try {
+      const inv = await createInvitation(tripId, { role, maxUses: null });
+      if (!inv.accept_url) {
+        // The invitation itself was created — it is in the pending list below — but without
+        // the token nobody can ever redeem it. An API predating `accept_url` is the only way
+        // to reach this, so the message names that rather than blaming the invite: the first
+        // person to hit it lost time to "the server didn't return a link", which is true and
+        // useless.
+        setError(
+          "That invite was created but came back without a link, so nothing can redeem it — " +
+            "the API is likely running an older build. Restart it, then revoke the empty " +
+            "invite below and create another."
+        );
+        await loadInvites();
+        return;
+      }
+      setLink({ url: inv.accept_url, role });
+      await loadInvites();
+    } catch (err) {
+      setError(
+        err instanceof ApiError ? (err.violations[0]?.message ?? err.message) : "Couldn't create a link."
+      );
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyLink = async () => {
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link.url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // navigator.clipboard is undefined outside a secure context, which is the ordinary
+      // case for a demo served over plain http on a LAN address. Select the text so the
+      // keyboard still works rather than failing with nothing the user can do about it.
+      linkRef.current?.select();
+      setError("Couldn't copy automatically — the link is selected, press Ctrl+C.");
     }
   };
 
@@ -186,8 +242,8 @@ export function MembersPanel({ tripId }: { tripId: string }) {
         <section>
           <h2 className="font-display text-display-sm text-fg">Invite someone</h2>
           <p className="mt-1 text-ui-sm text-fg-muted">
-            They&rsquo;ll get a single-use link by email. It expires, and you can revoke it
-            before it&rsquo;s used.
+            Send a single-use link to an address, or create one you can paste anywhere. Both
+            expire, and either can be revoked before it&rsquo;s used.
           </p>
 
           {error && (
@@ -224,6 +280,67 @@ export function MembersPanel({ tripId }: { tripId: string }) {
               Send invite
             </Button>
           </form>
+
+          <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => void createLink()}
+              disabled={busy}
+              data-testid="create-invite-link"
+            >
+              Or create a shareable link
+            </Button>
+            <p className="text-ui-xs text-fg-subtle">
+              No address needed — anyone with the link joins as{" "}
+              <span className="font-medium text-fg-muted">{role}</span>.
+            </p>
+          </div>
+
+          {link && (
+            <div
+              data-testid="invite-link-panel"
+              className="mt-3 rounded-card border border-accent/30 bg-surface-raised p-4"
+            >
+              <p className="text-ui-sm font-medium text-fg">
+                Shareable link · joins as {link.role}
+              </p>
+              <p className="mt-0.5 text-ui-xs text-fg-subtle">
+                Copy it now. Only a hash is stored, so this is the one and only time it can be
+                shown — leave the page and you&rsquo;ll need to create another.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <input
+                  ref={linkRef}
+                  readOnly
+                  value={link.url}
+                  aria-label="Invitation link"
+                  data-testid="invite-link-value"
+                  onFocus={(e) => e.target.select()}
+                  className="min-w-56 flex-1 rounded-sm border border-line bg-surface-sunken px-3 py-2 text-ui-sm text-fg-muted focus:border-accent focus:outline-none"
+                />
+                <Button type="button" onClick={() => void copyLink()} data-testid="copy-invite-link">
+                  {copied ? "Copied" : "Copy link"}
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLink(null);
+                    setCopied(false);
+                  }}
+                  className="rounded-sm text-ui-xs text-fg-subtle underline underline-offset-2 transition-colors hover:text-fg"
+                >
+                  Done
+                </button>
+              </div>
+              {/* Politeness rather than an alert: confirming a copy must not interrupt a
+                  screen reader mid-sentence, but silence would leave the button's label
+                  change unannounced. */}
+              <span role="status" aria-live="polite" className="sr-only">
+                {copied ? "Invitation link copied to the clipboard" : ""}
+              </span>
+            </div>
+          )}
 
           <div className="mt-5">
             <h3 className="text-ui-sm font-medium text-fg-muted">Pending invitations</h3>

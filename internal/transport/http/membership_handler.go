@@ -156,6 +156,19 @@ type invitationResponse struct {
 	CreatedAt time.Time  `json:"created_at"`
 }
 
+// createInvitationResponse is the create-only projection. It carries one field the list
+// projection must never carry, which is the whole reason it is a separate type rather than
+// an omitempty on the shared one — a future field added to the wrong struct would publish
+// live invite links to everyone who can list them.
+type createInvitationResponse struct {
+	invitationResponse
+
+	// AcceptURL is present for link invites only, and only here. It is not recoverable
+	// afterwards (only the hash is stored), so a client that means to show it must show it
+	// on this response.
+	AcceptURL string `json:"accept_url,omitempty"`
+}
+
 func toInvitationResponse(inv *domain.Invitation) invitationResponse {
 	// Deliberately no token or token hash in this projection: the raw token is shown once,
 	// in the email or the create response below, and never again. The hash is a database
@@ -195,14 +208,17 @@ func (h *MembershipHandler) CreateInvitation(w http.ResponseWriter, r *http.Requ
 		maxUses = &one
 	}
 
-	inv, err := h.members.CreateInvitation(r.Context(), tripID, userID, service.CreateInvitationInput{
+	created, err := h.members.CreateInvitation(r.Context(), tripID, userID, service.CreateInvitationInput{
 		Email: body.Email, Role: domain.Role(body.Role), MaxUses: maxUses,
 	})
 	if err != nil {
 		writeError(w, r, err, h.log)
 		return
 	}
-	writeData(w, http.StatusCreated, toInvitationResponse(inv))
+	writeData(w, http.StatusCreated, createInvitationResponse{
+		invitationResponse: toInvitationResponse(created.Invitation),
+		AcceptURL:          created.AcceptURL,
+	})
 }
 
 // ListInvitations returns a trip's outstanding invitations.

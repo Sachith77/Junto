@@ -137,25 +137,51 @@ export async function apiFetch<T>(path: string, opts: RequestOptions = {}): Prom
   return parseResponse<T>(res);
 }
 
+/** A non-envelope request that failed, carrying the status so callers can tell an expired
+ * credential (retryable after a refresh, or terminal if the refresh also fails) from a
+ * server fault. Without the status the only thing a caller can do is retry blindly. */
+export class RawHttpError extends Error {
+  readonly status: number;
+  constructor(status: number, body: string) {
+    super(`request failed: ${status} ${body}`);
+    this.name = "RawHttpError";
+    this.status = status;
+  }
+}
+
 /** Returns the parsed JSON payload with no envelope unwrapping, for the one route that
- * deliberately doesn't use it (the WS ticket endpoint — see ws/ticket.go). */
+ * deliberately doesn't use it (the WS ticket endpoint — see ws/ticket.go).
+ *
+ * Retries once on 401 after a silent refresh, exactly like apiFetch. That parity is not
+ * cosmetic: the access token is held in memory and expires on a timer (D30), so WITHOUT the
+ * retry the ticket call is the one request in the app that cannot survive its own token
+ * expiring — and since the socket's reconnect loop is what calls it, a single expiry turned
+ * into an unbounded 401 retry storm rather than a refresh. */
 export async function apiFetchRaw<T>(path: string, opts: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, auth = true } = opts;
-  const headers: Record<string, string> = {};
-  if (body !== undefined) headers["Content-Type"] = "application/json";
-  if (auth) {
-    const token = getAccessToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const doFetch = async (): Promise<Response> => {
+    const headers: Record<string, string> = {};
+    if (body !== undefined) headers["Content-Type"] = "application/json";
+    if (auth) {
+      const token = getAccessToken();
+      if (token) headers["Authorization"] = `Bearer ${token}`;
+    }
+    return fetch(`${API_URL}${path}`, {
+      method,
+      headers,
+      credentials: "include",
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+    });
+  };
+
+  let res = await doFetch();
+  if (res.status === 401 && auth && getAccessToken() !== null) {
+    const refreshed = await refreshAccessToken();
+    if (refreshed) res = await doFetch();
   }
-  const res = await fetch(`${API_URL}${path}`, {
-    method,
-    headers,
-    credentials: "include",
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`request failed: ${res.status} ${text}`);
+    throw new RawHttpError(res.status, await res.text());
   }
   return res.json() as Promise<T>;
 }

@@ -111,6 +111,15 @@ function EmptyTrips() {
             Create your first trip
           </ButtonLink>
         </div>
+        {/* Joining a trip requires the emailed link, because a targeted invitation is checked
+            against the invitee's own address when it is redeemed (D58). There is deliberately
+            no list of "invitations addressed to me" — so an invited user who lands here sees
+            an empty account and no sign the invitation exists. Saying so is the whole fix:
+            without it the honest state of the system reads as a bug. */}
+        <p className="mx-auto mt-6 max-w-md text-ui-sm text-fg-on-media-dim">
+          Been invited? Open the link in your invitation email to join — it has to be opened
+          while you&apos;re signed in as the address it was sent to.
+        </p>
       </div>
     </Media>
   );

@@ -639,6 +639,68 @@ func TestAuthEndpointsAreRateLimited(t *testing.T) {
 	t.Logf("throttling began after %d attempts", attempts)
 }
 
+// TestRefreshIsNotThrottledLikeLogin pins the split between two endpoints that used to share
+// one limiter, in BOTH directions — which is the point, since either half alone is a
+// half-truth. Login must stay strictly limited (D35's compensating control for a length-only
+// password policy) and refresh must not, because it defends against a different thing:
+// its credential is an opaque random token (D9) delivered in an HttpOnly cookie (D30), not a
+// guessable password, and a replayed one is answered by reuse detection revoking the whole
+// family rather than by a 429.
+//
+// The failure this prevents is a usability one with a demo-breaking shape: the access token
+// lives in memory, so every hard navigation costs one refresh, and under the login limiter a
+// few quick reloads exhausted the bucket and the app rendered as signed-out.
+//
+// Verified against a planted break: moving /auth/refresh back into the strict group fails this
+// test at refresh 3 of 15 — the signup, verify and login this test performs have already spent
+// three of the strict burst of five, which is exactly why the real-world symptom appeared after
+// only "a few" reloads rather than after five.
+func TestRefreshIsNotThrottledLikeLogin(t *testing.T) {
+	srv := newStrictlyLimitedServer(t)
+	c := newClientFor(t, srv)
+
+	email := signupAndVerify(t, c, "refreshlimit")
+	login := c.do(http.MethodPost, "/api/v1/auth/login", map[string]string{
+		"email": email, "password": apiPassword,
+	})
+	if login.status != http.StatusOK {
+		t.Fatalf("login status = %d, want 200", login.status)
+	}
+
+	// Well past the strict burst of 5. Each call rotates the refresh cookie, so this is also
+	// exercising rotation repeatedly rather than replaying one token.
+	const reloads = 15
+	for i := 0; i < reloads; i++ {
+		resp := c.do(http.MethodPost, "/api/v1/auth/refresh", nil)
+		if resp.status == http.StatusTooManyRequests {
+			t.Fatalf(
+				"refresh %d/%d was rate limited: a user who reloads a few times is told to slow down, "+
+					"and with the access token held in memory that renders as signed-out",
+				i+1, reloads,
+			)
+		}
+		if resp.status != http.StatusOK {
+			t.Fatalf("refresh %d/%d status = %d, want 200", i+1, reloads, resp.status)
+		}
+	}
+
+	// The negative: the split must not have loosened login. Without this, deleting the strict
+	// limiter entirely would leave both tests in this file green.
+	var loginLimited bool
+	for i := 0; i < 30; i++ {
+		resp := c.do(http.MethodPost, "/api/v1/auth/login", map[string]string{
+			"email": email, "password": "guess-" + fmt.Sprint(i),
+		})
+		if resp.status == http.StatusTooManyRequests {
+			loginLimited = true
+			break
+		}
+	}
+	if !loginLimited {
+		t.Fatal("login is no longer rate limited: exempting refresh must not exempt credentials")
+	}
+}
+
 // --- session management ---
 
 func TestSessionListingAndRevocation(t *testing.T) {

@@ -101,6 +101,24 @@ type HTTPConfig struct {
 	// in-flight requests finish, then force the issue.
 	ShutdownTimeout time.Duration
 
+	// DrainDelay is how long the process keeps serving AFTER readiness starts failing and
+	// BEFORE the listener closes. It exists to close the window in which a load balancer is
+	// still routing to a process that has stopped accepting — every request in that window
+	// is a 502 caused by the deploy rather than by a fault.
+	//
+	// It must exceed the platform's probe interval times its failure threshold, or the
+	// instance is pulled from the pool only after it has already stopped answering, which is
+	// the exact failure the delay is meant to prevent. The 8s default is sized for the
+	// fly.toml in this repo (a 2s interval and 2 failures, with margin); a platform that
+	// probes less often needs a longer one. Zero disables the wait entirely, which is what
+	// local development and the tests want — there is no load balancer to notify.
+	DrainDelay time.Duration
+
+	// ProbeTimeout bounds ALL health probes collectively. Deliberately short: a probe that
+	// outlives the orchestrator's own timeout is indistinguishable from a dead instance, so
+	// erring long converts a slow dependency into a restart.
+	ProbeTimeout time.Duration
+
 	CORSAllowedOrigins []string
 }
 
@@ -197,12 +215,16 @@ func Load() (*Config, error) {
 			Format: env("LOG_FORMAT", "json"),
 		},
 		HTTP: HTTPConfig{
-			Addr:               env("HTTP_ADDR", ":8080"),
-			ReadHeaderTimeout:  envDuration("HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
-			ReadTimeout:        envDuration("HTTP_READ_TIMEOUT", 15*time.Second),
-			WriteTimeout:       envDuration("HTTP_WRITE_TIMEOUT", 30*time.Second),
-			IdleTimeout:        envDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
-			ShutdownTimeout:    envDuration("HTTP_SHUTDOWN_TIMEOUT", 20*time.Second),
+			Addr:              env("HTTP_ADDR", ":8080"),
+			ReadHeaderTimeout: envDuration("HTTP_READ_HEADER_TIMEOUT", 5*time.Second),
+			ReadTimeout:       envDuration("HTTP_READ_TIMEOUT", 15*time.Second),
+			WriteTimeout:      envDuration("HTTP_WRITE_TIMEOUT", 30*time.Second),
+			IdleTimeout:       envDuration("HTTP_IDLE_TIMEOUT", 120*time.Second),
+			ShutdownTimeout:   envDuration("HTTP_SHUTDOWN_TIMEOUT", 20*time.Second),
+			// Zero locally: a developer hitting Ctrl+C should not wait eight seconds for a
+			// load balancer that does not exist. Production sets it; see fly.toml.
+			DrainDelay:         envDuration("HTTP_DRAIN_DELAY", 0),
+			ProbeTimeout:       envDuration("HTTP_PROBE_TIMEOUT", 2*time.Second),
 			CORSAllowedOrigins: envList("CORS_ALLOWED_ORIGINS", []string{"http://localhost:3000"}),
 		},
 		DB: DBConfig{
@@ -256,6 +278,19 @@ func Load() (*Config, error) {
 			PublicBaseURL: env("PUBLIC_BASE_URL", "http://localhost:8080"),
 			WebBaseURL:    env("WEB_BASE_URL", "http://localhost:3000"),
 		},
+	}
+
+	// The drain delay defaults differently by environment, which is the one place in this
+	// file that happens, so it is done here rather than hidden in an env() default.
+	//
+	// Zero is the right local default (no load balancer to notify, and nobody wants Ctrl+C to
+	// pause) and a bad production one (a rolling deploy 502s for exactly as long as the
+	// platform takes to notice). Keying off "was the variable set at all" rather than off the
+	// value keeps an operator who deliberately writes HTTP_DRAIN_DELAY=0 in production in
+	// charge of their own decision — the same distinction D19 makes between an absent value
+	// and a stated one.
+	if cfg.Env.IsProduction() && os.Getenv("HTTP_DRAIN_DELAY") == "" {
+		cfg.HTTP.DrainDelay = 8 * time.Second
 	}
 
 	if err := cfg.Validate(); err != nil {

@@ -28,7 +28,17 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${fraunces.variable} ${inter.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col bg-surface text-fg">
+      {/* Browser extensions write their own attributes onto <body> before React hydrates —
+          Bitdefender's `bis_register` / `__processed_<uuid>__` are the ones seen here, and
+          password managers and ad blockers all do the same thing. React compares the server
+          HTML against the mutated DOM and reports a mismatch the app cannot fix, since the
+          markup was correct when it was sent.
+
+          suppressHydrationWarning does NOT propagate: it silences attribute and text
+          differences on THIS element only, so a real mismatch anywhere inside the tree is
+          still reported. That is what makes it the right instrument here rather than a
+          blanket mute — the noise came from one element, and only that element is exempted. */}
+      <body suppressHydrationWarning className="min-h-full flex flex-col bg-surface text-fg">
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

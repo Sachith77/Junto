@@ -441,6 +441,13 @@ Also found while wiring this slice, unrelated to comments themselves but caught 
 | D104 | `cmd/api`'s `syncengine.Services` construction is pulled into a named function (`newSyncEngineServices`) with a **reflection-based test asserting every returned field is non-nil**, called with distinct sentinel values | This is a different failure shape from every entry in the "standing principle" section above, and worth distinguishing rather than filing alongside them: those are tests whose ASSERTION was wrong (measuring something narrower than its name claimed). This was a code path with **no test on it at all** — `tests/stack_test.go` builds its own hand-written copy of the same `syncengine.Services{}` literal for the full-stack suite, and the two had already drifted (stack_test.go had `Budget` correctly wired; `main.go` did not) before anyone noticed. Extracting the literal into a function does not, by itself, stop a second hand-written copy from drifting the same way — the test is what closes that, because it calls the EXACT function `run()` calls rather than a re-implementation, and fails if anything it returns is nil. Verified against the actual historical bug: reverting `newSyncEngineServices`'s `Budget` parameter to a literal `nil` fails the test with the same nil-panic-in-production message the real bug would have produced |
 | D105 | `AUTH_AUTO_VERIFY_EMAIL` marks new accounts verified at signup, **refused outright in production** by config validation | A deliberate, bounded exception to D29 rather than a softening of it. D29's reasoning — an address that was never proven cannot be recovered by password reset, so an unrecoverable account is worse than an unusable one — is about REAL users with REAL addresses; locally there is no address to prove and the sign-up/open-Mailpit/find-the-link loop is friction with no reviewing value. The failure mode this avoids is the realistic one: when a demo loop is annoying enough, the thing people actually reach for is weakening the real policy for everyone. Two properties keep it honest. It is **refused, not ignored**, in production (D19's reasoning: an operator who set it believes signups are auto-verified, so booting with it silently off is the worse failure). And it issues **no token and sends no mail** — a version that emailed a link AND verified the account would leave a live unspent credential in an inbox. The frontend branches on `email_verified_at` in the signup response rather than on a client-side copy of the server's configuration, so the two cannot disagree |
 | D106 | The demo seed is **deliberately unable to run against production**, and says so rather than acquiring a way | It needs a verified account to log in (D29), which only auto-verify (refused in production, D105) or a readable mailbox can provide. Both of the obvious ways to "fix" that are worse than the limitation: a seeding endpoint that mints verified accounts is an authentication bypass with a friendly name, and a service account with a fixed password is a credential in the repository. So the limit stands, the script fails with an actionable message naming `JUNTO_MAILBOX_URL` and the auto-verify flag, and a deployed demo runs against staging. Recorded here because the failure it prevents is the one that shows up at deploy time, in front of an audience, rather than in a test |
+| D107 | `/auth/refresh` gets its **own, permissive limiter** (`middleware.RefreshRateLimit`, 30 burst then 1/sec) instead of sharing the strict credential bucket. D35 is unchanged for signup/login/verify/reset | The two endpoints defend against different attacks, and putting them in one bucket applied a password-guessing posture to something that accepts no password. Login takes a HUMAN-CHOSEN secret from a length-only policy, so an attacker's best move is many attempts and throttling is the compensating control that makes D35's reasoning true. Refresh takes an opaque 256-bit random token (D9) in an HttpOnly cookie scoped to `/api/v1/auth` (D30); it cannot be guessed at any rate worth defending against, and a *replayed* one is met by reuse detection revoking the entire token family — strictly stronger than a 429. So the strict limit bought nothing and cost real usability: the access token is memory-only, every hard navigation costs one refresh, and at burst 5 refilling one per ten seconds a few quick reloads exhausted the bucket and the app rendered as signed-out. Found by direct testing, not in a test — which is why `TestRefreshIsNotThrottledLikeLogin` now pins BOTH directions, since a version asserting only that refresh survives would stay green if the strict limiter were deleted outright |
+| D108 | A **link** invite returns its redemption URL on the create response (`accept_url`); a **targeted** invite deliberately does not | Not a loosening of the "only a hash is stored" rule — the discovery of an invite mode that had no delivery channel at all. `CreateInvitation` generated a token, hashed it, stored the hash and dropped the raw value on the floor; for an email invite the raw value still reached the invitee's inbox, but for a link invite (`email: null`) there was no second copy, so the row was created, listed as pending, showed an expiry, and **could never be redeemed by anyone**. The handler's own doc comment had described the fix as already implemented since Stage 1 Slice 4, which is why nothing looked wrong. The asymmetry is the substance of the decision: a targeted invite's token going to the named address *and nowhere else* is half of what makes D58's email check mean anything, and an inviter who wants a pasteable link can simply ask for a link invite. Pinned from both sides — `TestLinkInviteReturnsARedeemableAcceptURL` redeems the returned URL end to end as a second user (a URL that is present but malformed fails identically to an absent one from the invitee's side, so asserting non-empty would not have been enough), and `TestTargetedInviteWithholdsItsAcceptURL` catches the tempting widening to "always return it", which every other invitation test would have stayed green through because they all recover the token from the mail. The list projection stays token-free, and is now a separate wire type from the create projection rather than an `omitempty` on a shared one, so a future field cannot be added to the wrong struct and publish live links to everyone who can list them |
+| D109 | The frontend's missing create paths are ordinary CRUD, but their absence is recorded because of **how** they went missing: every one had a working, tested backend endpoint behind it | Days, slots and options could all be created through the API, were all covered by service and full-stack tests, and were all reachable by the seed script — which is exactly why the gap survived Stage 3. The e2e suite drives *seeded* trips, so it exercises voting, comments and presence on data that already exists; nothing in it ever creates an itinerary through the interface, and a trip created by hand through the UI was therefore a permanently empty screen with no control on it. The generalisable form is the one already stated for `syncengine.Services.Budget` (D104) and the phantom component tests: the failure was not in any layer, it was in the seam nothing executed. A backend endpoint with no caller and a UI with no way to reach it both pass every test in the repository |
+| D110 | **Liveness checks no dependency, ever.** `/livez` consults nothing external and stays 200 even while draining | The instinct is that a liveness probe should be thorough, and acting on it is the most common way a health check makes an outage worse. A `/livez` that pings Postgres means every instance fails liveness at the same instant when the database blips, and the orchestrator restarts all of them — but restarting the API cannot fix the database. It discards the warm pool and every in-flight request, so recovery is strictly slower than having done nothing, and the restarts themselves look like a cascading application failure to whoever is paging. Liveness answers exactly one question: is this process wedged. It also stays 200 during the drain, because a draining process is not a wedged one and a 503 there invites a kill mid-handover — reintroducing precisely the dropped connections the drain exists to prevent. `TestLivenessIgnoresDependencies` and `TestDrainingFailsReadinessButNotLiveness` both fail against the planted "make liveness accurate" change |
+| D111 | Readiness fails on **Postgres only**. Redis is probed, reported, and deliberately **not** critical; object storage is not probed at all | Two independent reasons, and the second is the one that would be missed. First, a readiness check that fails on Redis pulls *every* instance out of rotation simultaneously, converting a degradation into a total outage — readiness is a routing decision, and there is nowhere better to route to. Second, and more specific to this system: Redis being down is a mode it is *designed* for. No `REDIS_URL` at all is a supported single-instance topology, and when it is configured and drops, D75's log-backed gap fill and D76's reconcile tick repair cross-instance delivery out of the operation log — the cost is latency, not lost writes. Postgres has no equivalent: every read, every write and every `op_seq` allocation (D60) goes through it, so an instance that cannot reach it has nothing to serve. Storage is unprobed because attachment failure affects one feature rather than the API, and probing a third party makes its uptime silently become ours. Pinned by `TestReadinessFailsOnCriticalButNotOnDegraded`, verified against dropping the `c.Critical &&` guard |
+| D112 | Shutdown **fails readiness first, then keeps serving** for `HTTP_DRAIN_DELAY`, and only then calls `server.Shutdown` | Without the delay this is the graceful shutdown that still 502s, and it is graceful in name only. `Shutdown` stops accepting new connections the moment it is called, but the load balancer does not learn that until its next probe fails — and every request routed into that window fails for no reason except the deploy. Going unready *while still serving* inverts it: the instance leaves the pool with zero errors, and the listener closes only after nothing is being sent to it. The cost is two numeric constraints that are easy to break by editing one of them (`drain > probe interval × failures`, and the platform's `kill_timeout > drain + shutdown`), so both are written in `fly.toml` next to the values and again in `docs/deploy.md`. Fly's default `kill_timeout` is 5s, which would SIGKILL partway through an 8s drain — a drain that gets killed halfway is worse than no drain, because connections are cut at an arbitrary moment rather than a chosen one. The delay defaults to 0 in development and 8s in production, keyed on whether the variable was **set** rather than on its value, so an operator who deliberately writes `HTTP_DRAIN_DELAY=0` in production keeps their decision (D19's distinction between absent and stated) |
+| D113 | Probe responses carry **component status and nothing else** — no error strings — and the probe paths are exempt from both the rate limiter and the request log | The endpoints are unauthenticated by necessity, since an orchestrator cannot hold a credential, so everything in the body is public. A driver error naming a host and port is exactly the internal topology that must not be published, and an `error` field is the most natural thing in the world for a well-meaning contributor to add — so `TestProbeResponsesLeakNoInternals` plants it. The detail is not lost: `HealthHandler` logs it itself, ERROR for critical and WARN for degraded, where it reaches whoever can read logs and nobody else. Same shape as D32's identical-401 and D23's constraint-name mapping. The exemptions are for two different failures: mounted under `/api/v1` the probes would share the general per-IP bucket and eventually 429 — a rate limiter capable of taking a *healthy* deployment down, since the platform reads 429 as unhealthy — and at INFO per hit a 2-second poll makes successful probes the overwhelming majority of the log, burying whatever someone opened it to find |
 
 ---
 
@@ -561,9 +568,11 @@ Also found while wiring this slice, unrelated to comments themselves but caught 
     Voting UI casts/retracts over `vote.set.v1` per spec, not REST, and shows the resolved
     `selected_option_id` distinctly from the raw tally (D41). Found and fixed two real bugs
     while wiring: a missing `PUT` in the backend's CORS allowed-methods list, and a duplicate
-    WS subscribe frame in the client that was corrupting presence server-side. 5 component
-    tests + 1 real two-browser Playwright e2e against the full real stack (Postgres, Redis,
-    Mailpit, `go run ./cmd/api`, `next dev`) — no mocks.
+    WS subscribe frame in the client that was corrupting presence server-side. Tested by 1 real
+    two-browser Playwright e2e against the full real stack (Postgres, Redis, Mailpit,
+    `go run ./cmd/api`, `next dev`) — no mocks. **Correction (2026-08-09):** this entry
+    previously claimed "5 component tests" as well. No such tests were ever written — see
+    *Frontend test coverage, corrected* below.
   - ✅ Slice 2: comments (flat, per-slot, append-only — D98–D103) + optimistic reconciliation.
     New backend surface built for it: migration 000005, `internal/domain/comment.go` +
     op vocabulary (`comment.create.v1`/`comment.delete.v1`, WS-native unlike attachments),
@@ -579,9 +588,11 @@ Also found while wiring this slice, unrelated to comments themselves but caught 
     actual construction path rather than a narrative note. Backend: repository/service/domain
     tests plus two
     full-stack tests (`tests/comments_api_test.go`) covering REST authz and WS live delivery +
-    fold consistency. Frontend: 8 component tests plus the same e2e page extended with a Part C
+    fold consistency. Frontend: the same e2e page extended with a Part C
     proving a comment posted by one client appears live on a second client's screen, and that
-    the author-only delete control does not even render for a non-author.
+    the author-only delete control does not even render for a non-author. **Correction
+    (2026-08-09):** this entry previously claimed "8 component tests" as well. No such tests
+    were ever written — see *Frontend test coverage, corrected* below.
   - ✅ Slice 3 — the visual pass, in four reviewed groups. **Part 1** produced `web/app/
     tokens.css` before any screen was touched: two visual languages (cinematic outer shell,
     dense inner app) threaded by one serif, one accent hue and one `--radius-card`. **Group A**
@@ -597,8 +608,28 @@ Also found while wiring this slice, unrelated to comments themselves but caught 
       verified by grep, and `/design` remains as a living specimen.
     - Password reset had **no UI at all** — the backend has emailed `/reset-password?token=…`
       links since Stage 1 Slice 3 and that route 404'd. Built in Group D.
+  - ✅ Slice 4 — **the create paths**, found by using the app rather than by a failing test.
+    Decisions D108–D109. Three surfaces the backend had supported since Stage 1 Slice 4 were
+    unreachable from the interface, and one invite mode had never worked at all:
+    - ✅ **Shareable invite links** (D108). `MembershipService.CreateInvitation` now returns a
+      `CreatedInvitation` carrying `AcceptURL` for link invites; the Members panel offers
+      "create a shareable link" beside the email form and shows the URL once, with a copy
+      control that falls back to selecting the text when `navigator.clipboard` is absent —
+      which is every demo served over plain http on a LAN address, not a hypothetical.
+      Verified end to end against the real stack: link created, pasted, redeemed by a second
+      account, joiner on the roster as editor.
+    - ✅ **Adding to an itinerary.** `web/lib/api/{slots,options}.ts` gained `createSlot` and
+      `createOption` (`createDay` already existed and had **no caller**, which is its own
+      small indictment). The itinerary now has an add-a-day control, a per-day add-a-slot
+      disclosure, and an unscheduled-backlog path; the slot detail can propose an option, so
+      the empty state that said "someone needs to suggest a candidate" now lets them. All
+      gated on `owner`/`editor`, which hides the controls without pretending to enforce
+      anything — the service still refuses a viewer's write.
+    - ✅ **Now covered**, by `web/e2e/create-paths.spec.ts` — see Stage 4 Slice 4 below. The
+      gap was real and is closed; the entry above is left as written because the reason it
+      existed (the suite only ever drove *seeded* trips) is the part worth remembering.
 - **Stage 4 — Demo polish** 🚧: intentional UI ✅ (Stage 3 Slice 3), seed script ✅ (Slice 2,
-  below); health/ready/live endpoints and deploy ⬜ (Slice 3).
+  below); health/ready/live endpoints and deploy ✅ (Slice 3, below).
   - ✅ Slice 2 — `web/scripts/seed-demo.ts` (`npm run seed`). Builds a demo-ready trip through
     the PUBLIC API only — three real members via the real invitation flow, two days, five
     slots, competing options, split votes, comments and a four-entry budget — and prints
@@ -615,6 +646,85 @@ Also found while wiring this slice, unrelated to comments themselves but caught 
     production would be a hole, not a feature. For a deployed demo, point it at a staging stack
     with a readable mailbox via `JUNTO_MAILBOX_URL`. The script fails with that instruction
     rather than a confusing error.
+  - ✅ Slice 3 — **operational readiness and deploy.** Decisions D110–D113. Target is Fly.io;
+    the frontend is deliberately out of scope.
+    - ✅ **Three probe endpoints, and the differences between them are the design.** `/livez`
+      consults nothing (D110), `/readyz` fails on Postgres and while draining but not on Redis
+      (D111), `/healthz` is the human view with per-component status. All mounted at the root
+      rather than under `/api/v1`, which is not cosmetic — the rate limiters live inside that
+      route, and a throttled probe reads to the platform as an unhealthy instance (D113).
+    - ✅ **Shutdown drains before it stops accepting** (D112). Readiness goes false, the
+      process keeps serving for `HTTP_DRAIN_DELAY`, and only then does `server.Shutdown` run.
+      Verified against a real container: readiness flipped to 503 at t+2s, liveness held at
+      200 throughout, ordinary API requests were served for the whole drain window, and the
+      listener closed after it.
+    - ✅ **Dockerfile** — multi-stage, static, `scratch` plus CA certificates. Two Stage-1
+      decisions pay off here rather than needing workarounds: D17's embedded `time/tzdata` is
+      exactly what makes a scratch image viable, and the embedded migrations mean `migrate`
+      cannot drift from the binary beside it. `/healthz` reports the git revision from Go's
+      own VCS stamp, so it needs no ldflags and cannot drift from a hand-kept constant —
+      confirmed reporting `a64349a8bf60-dirty` from a real image build.
+    - ✅ **`fly.toml` + `docs/deploy.md`** — probe contract, the two timeout constraints that
+      must agree, secrets checklist, runbook, and an explicit list of what the deployment does
+      *not* do (no seed against production per D106, no frontend, no metrics, single region
+      because Postgres is the sequencer for every write).
+    - ✅ **6 tests** (`tests/health_api_test.go`), each verified against the specific planted
+      break it names. One of those plants produced a genuine finding rather than a
+      confirmation — see below.
+    - ⚠️ **Not deployed.** Every artifact is built and exercised locally against real
+      containers, but `fly deploy` needs an account and has not been run. The claim this slice
+      earns is "deployable and verified locally", not "deployed".
+
+  - ✅ Slice 4 — **frontend e2e for the create paths**, closing the gap Stage 3 Slice 4 left
+    open. Stage 4's test coverage is complete; deployment is the only thing left.
+    - ✅ `web/e2e/create-paths.spec.ts` — 3 tests, and the rule that makes them worth having is
+      stated at the top of the file: **it may not use `createVotingFixture` and may not POST
+      itinerary content.** Every other spec starts from a seeded trip, which is exactly why the
+      gap survived (D109); a fixture here would rebuild the blind spot. Only account setup goes
+      through the API. Everything else is typed and clicked.
+      1. A brand-new trip offers a control to start planning it — the single assertion that
+         would have caught the whole class on its own, since the empty state used to *instruct*
+         without rendering anything that complied.
+      2. An itinerary built from nothing: day → slot (with a start time, because `"19:30"` from
+         an `<input type="time">` is the one conversion this path has, and a slot arriving with
+         a null time still renders a row) → unscheduled slot, asserted to land in the backlog
+         and *not* on the day → option → a second option → a vote on an option this test
+         created, then resolving it, then confirming the itinerary row shows the decision. That
+         last stretch is the join to `voting.spec.ts`: everything before it could pass while
+         producing rows the rest of the app cannot use.
+      3. A shareable link created in the UI, redeemed by a second account, roster confirmed —
+         and then the second browser (needed anyway) reused to prove a slot created through one
+         client's interface arrives on the other's screen live, with no reload.
+    - ✅ **Four planted breaks, each seen to fail**: the empty state's `AddDay` removed;
+      `createSlot` stubbed to a no-op; `AddOption` removed from `SlotDetail`; and
+      `CreatedInvitation.AcceptURL` left unset — the exact state the code shipped in, which
+      fails at the copy-panel assertion.
+    - ✅ **Found while verifying, and fixed**: `access-and-revocation.spec.ts` had two tests
+      that could not pass. Neither sets `test.setTimeout`, so both ran at the config's 30s
+      default — and the second contains an unconditional `page.waitForTimeout(45_000)`, so it
+      was not a slow-CI flake but arithmetic. The other exceeded 30s as soon as the auth
+      limiter's backoff was in play, which is any run following another spec. Both failed with
+      a bare timeout and no assertion, which reads as the feature being broken rather than the
+      budget being too small. **Generalisable, and now in `web/README.md`: in a suite whose
+      fixtures deliberately back off against a real rate limiter, a per-spec timeout is not
+      optional.**
+
+#### The plant that found something (Slice 3)
+
+Continuing the standing principle above, and worth recording because it is the second kind of
+outcome — the kind that is a finding rather than a relief.
+
+`TestProbesAreNotRateLimited` **passed** against its own planted break. The plant moves the
+three routes inside the `/api/v1` group, which also relocates them to `/api/v1/livez` — so
+every request 404'd, nothing was throttled, and a test whose entire purpose is to detect that
+move sailed straight through it. The assertion was `!= 429`, and "not 429" is satisfied
+perfectly well by an endpoint that does not exist.
+
+The fix was to assert the status the probe is actually supposed to return (`== 200`), which is
+the only assertion that a missing route cannot satisfy. Re-planted afterwards, it fails. The
+generalisable form: **a negative assertion about a failure mode is usually satisfiable by a
+second, different failure** — prefer asserting the success you expect over the failure you
+fear.
 
 ### Product modes (context; do not build ahead)
 
@@ -637,6 +747,47 @@ CI fails on lint failure, test failure, or race-detector failure. ~80% coverage 
 Repository tests run against real Postgres via `testcontainers-go`. Mocking the DB would test
 nothing here: the interesting behaviour *is* the constraints and partial indexes.
 
+### ⚠️ Frontend test coverage, corrected (2026-08-09)
+
+Stage 3 Slices 1 and 2 claimed "5 component tests" and "8 component tests" respectively.
+**Neither set exists, and neither ever did.** `git ls-files web` returns no `*.test.tsx` or
+`*.test.ts` file; `vitest.config.ts` and `vitest.setup.ts` are present and configured, but
+`npm test` exits 1 with "No test files found". The claim was never true.
+
+It survived because nothing checked it: **`web/` is not in CI at all.** The workflow and the
+`make check` target run Go only, so a `npm test` that has never passed also never failed, and
+`npx tsc --noEmit` / `npx eslint` are run by hand or not at all.
+
+What the frontend coverage actually is, stated so the next reader does not have to re-derive it:
+
+| Claimed | Actual |
+|---|---|
+| 13 component tests (5 + 8) | **none** |
+| Playwright e2e against the real stack | **real** — `web/e2e/`, no mocks, real Postgres/Redis/Mailpit/Go API |
+| Frontend in CI | **no** — Go only |
+
+**Update (2026-08-11).** The e2e half has grown and is now the whole of the frontend's coverage,
+deliberately: 6 correctness tests across `voting.spec.ts`, `access-and-revocation.spec.ts` and
+`create-paths.spec.ts`, all green together against the real stack. Still **no component tests
+and still not in CI** — an e2e run needs Postgres, Redis, Mailpit, the Go API and `next dev`, and
+takes ~4 minutes. That remains a real gap in *speed of feedback* rather than in correctness, and
+it is stated here rather than closed by writing tests whose only purpose is to make a sentence
+true.
+
+**Why this was corrected rather than backfilled.** Writing thirteen component tests to make a
+sentence true is precisely the coverage-gaming this file warns against two paragraphs up, and
+the e2e tests are the stronger article for this app: what breaks here is the seam between the
+API's response and what the UI does with it, which is what both bugs found on 2026-08-09 were,
+and which a test with a mocked fetch cannot see. The honest position is that frontend behaviour
+is covered end-to-end and not at the unit level, and that this is a real gap in *speed of
+feedback* — an e2e run costs minutes and needs the whole stack up — rather than in correctness.
+
+**The generalisable finding is not about the frontend.** Every claim in this file that has held
+up did so because a test would fail if it stopped being true, and every claim that drifted —
+this one, and `syncengine.Services.Budget` before it (D104) — did so in a place nothing
+executed. A number in prose is not a claim, it is a memory of an intention. Prefer naming the
+file that proves the statement, the way the claims table above does.
+
 ---
 
 ## Commands
@@ -651,6 +802,14 @@ go test ./... -short          # skip anything needing Docker
 sqlc generate                 # after ANY change to migrations/ or queries/
 make verify-schema            # adversarial schema invariant checks
 make check                    # everything CI enforces, locally
+
+# Probes (Stage 4 Slice 3). /healthz is the one to read: it names each dependency and
+# reports the running build's git revision, which is how you confirm a deploy landed.
+curl -s localhost:8080/healthz | jq   # detail: per-component status + version
+curl -s localhost:8080/readyz         # routing decision — 503 on Postgres down, or draining
+curl -s localhost:8080/livez          # process only; never consults a dependency (D110)
+
+docker build -t junto-api .           # static scratch image; see Dockerfile and docs/deploy.md
 
 # Re-measure the non-functional targets and print the figures recorded above.
 # They run as part of the normal suite too; -v is what surfaces the numbers.
@@ -739,6 +898,15 @@ These checks exist because the claims they back are otherwise unfalsifiable:
   instance B's revocation transport replaced by `NoopRevocationTransport` — the plant matters
   because instance A closes its own sockets synchronously, so a test watching only A would pass
   with the peer path completely dead.
+- `tests/health_api_test.go` — the probe contract (D110–D113). Its assertions are deliberately
+  about the DIFFERENCES between the three endpoints, because every one of them is a decision
+  that a plausible simplification would quietly undo: liveness must stay 200 with a dead
+  critical dependency AND while draining, readiness must fail on Postgres but NOT on Redis,
+  and no probe body may contain a host, a port or a driver message. Verified against four
+  planted breaks — liveness consulting dependencies, readiness dropping the `Critical` guard,
+  an `error` field added to the component status, and the routes moved behind the rate
+  limiter. The last of those is the one that found a weak assertion rather than confirming a
+  strong one; see *The plant that found something* above.
 - `tests/nfr_test.go` — the non-functional targets, measured rather than asserted. Reports
   single-trip write throughput against the same writers spread across trips (the ratio is the
   finding), end-to-end p99 message latency at 100 connections on one trip, the p99 difference

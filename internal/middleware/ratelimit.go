@@ -54,6 +54,28 @@ func AuthRateLimit() RateLimitConfig {
 	return RateLimitConfig{RequestsPerSecond: 0.1, Burst: 5, TTL: 15 * time.Minute}
 }
 
+// RefreshRateLimit is for /auth/refresh, which is NOT a credential-guessing surface and must
+// not carry the credential-guessing posture.
+//
+// AuthRateLimit exists because login accepts a GUESSABLE secret: a human-chosen password, from
+// a length-only policy, where an attacker's best strategy is many attempts. None of that is
+// true of refresh. Its credential is an opaque 256-bit random token (D9) that cannot be
+// guessed at any rate worth defending against, it is delivered in an HttpOnly cookie scoped to
+// /api/v1/auth (D30), and replaying one is caught by reuse detection, which revokes the entire
+// token family — a strictly stronger response than a 429. So the strict limit bought no
+// security here and cost real usability.
+//
+// What it cost, concretely: the access token lives in memory (D30), so every hard navigation
+// restores it with one refresh. At burst 5 refilling one per ten seconds, a handful of quick
+// reloads exhausted the bucket and the app rendered as signed-out — observed in development,
+// and exactly the kind of thing that would surface during a live walkthrough.
+//
+// Still bounded rather than unlimited: 30 up front then one per second is far beyond any real
+// client's navigation rate while keeping a runaway loop from becoming free session churn.
+func RefreshRateLimit() RateLimitConfig {
+	return RateLimitConfig{RequestsPerSecond: 1, Burst: 30, TTL: 15 * time.Minute}
+}
+
 // GeneralRateLimit is a loose ceiling for ordinary API traffic — a backstop against runaway
 // clients, not a policy.
 func GeneralRateLimit() RateLimitConfig {
