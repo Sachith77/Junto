@@ -14,13 +14,19 @@ export function Skeleton({ className = "" }: { className?: string }) {
   );
 }
 
+/** Matches TripCard's real shape: ONE media block with the caption overlaid, at the same
+ *  height. It previously described the older card — a 14rem image with a text block beneath
+ *  it — so the list visibly re-laid-out the moment trips arrived, which is the exact reflow
+ *  the note above says these exist to prevent. */
 export function TripCardSkeleton() {
   return (
-    <div className="overflow-hidden rounded-card border border-line-subtle bg-surface-raised">
-      <Skeleton className="h-56 rounded-none" />
-      <div className="space-y-2 p-5">
-        <Skeleton className="h-5 w-2/3" />
-        <Skeleton className="h-3.5 w-1/3" />
+    <div className="relative h-80 overflow-hidden rounded-card bg-ink-200/70 sm:h-[24rem]">
+      <div className="absolute inset-x-0 top-0 p-6 sm:p-7">
+        <Skeleton className="h-3 w-44 bg-ink-300/70" />
+      </div>
+      <div className="absolute inset-x-0 bottom-0 space-y-3 p-6 sm:p-7">
+        <Skeleton className="h-9 w-3/5 bg-ink-300/70" />
+        <Skeleton className="h-4 w-2/5 bg-ink-300/70" />
       </div>
     </div>
   );

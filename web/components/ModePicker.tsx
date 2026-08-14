@@ -133,10 +133,23 @@ export function ModePicker({ tripId }: { tripId: string }) {
 
 function ModeCard({ mode, tripId }: { mode: Mode; tripId: string }) {
   const inner = (
+    // Hover: a small lift, a barely-there scale, and a deeper shadow, at 180ms.
+    //
+    // Three deliberate choices. The duration comes down from 300ms to 180ms because a hover
+    // is a response to the cursor, not an entrance — at 300ms the card is still arriving after
+    // the pointer has settled. The scale is 1.015, which is under the threshold where the
+    // cover's grain visibly resamples but enough to read as "coming forward" alongside the
+    // lift. And the shadow deepens with it, because a card that rises without its shadow
+    // changing reads as sliding rather than lifting.
+    //
+    // transition-[transform,box-shadow] rather than transition-all: `all` would also animate
+    // the background layers of the cover underneath, which is work for no visual gain.
     <Media
       seed={mode.seed}
-      className={`h-72 rounded-card shadow-lg transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)] ${
-        mode.href ? "group-hover:-translate-y-1" : ""
+      className={`h-72 rounded-card shadow-lg transition-[transform,box-shadow] duration-[180ms] ease-[cubic-bezier(.22,1,.36,1)] ${
+        mode.href
+          ? "group-hover:-translate-y-1.5 group-hover:scale-[1.015] group-hover:shadow-xl group-focus-visible:-translate-y-1.5 group-focus-visible:scale-[1.015]"
+          : ""
       }`}
     >
       <div className="absolute inset-0 flex flex-col justify-end p-6">

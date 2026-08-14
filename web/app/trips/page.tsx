@@ -74,12 +74,17 @@ export default function TripsPage() {
 
         {load.state === "ready" && load.trips.length === 0 && <EmptyTrips />}
 
+        {/* One size for every card.
+            The first two used to get a taller treatment on the theory that an editorial grid
+            wants a focal point. In a two-column grid that only works when the count is even:
+            at three trips it produced two tall cards and one short one, which does not read
+            as emphasis — it reads as a layout bug, and it was reported as one. A "hero" row
+            would need to span the full width to be legible as a choice, and that is a
+            different design; uniform is the honest version of this one. */}
         {load.state === "ready" && load.trips.length > 0 && (
           <div className="grid gap-6 sm:grid-cols-2">
-            {load.trips.map((trip, i) => (
-              // The first two get the taller treatment — an editorial grid should
-              // have a focal point rather than reading as a uniform contact sheet.
-              <TripCard key={trip.id} trip={trip} priority={i < 2} />
+            {load.trips.map((trip) => (
+              <TripCard key={trip.id} trip={trip} />
             ))}
           </div>
         )}

@@ -21,6 +21,18 @@ import type { OpFrame } from "@/lib/types";
 
 const BUDGET_OPS = new Set(["budget.set.v1", "budget.delete.v1"]);
 
+/** Same window, and the same reasoning, as Itinerary's OP_REFETCH_COALESCE_MS: short enough to
+ *  stay imperceptible next to the measured p99 delivery of 23–49ms, long enough to swallow a
+ *  burst.
+ *
+ *  The burst here is not a single intent fanning out into several ops the way D63 describes —
+ *  a budget write is atomic by construction (D44/D83), so one intent is one op. It is several
+ *  PEOPLE: settling up at the end of a trip is half a dozen members entering their expenses at
+ *  once, and each remote op currently triggers its own full listBudget. Coalescing turns a
+ *  flurry into one read of the state after it settles, which is the only version of it anyone
+ *  can actually read. */
+const OP_REFETCH_COALESCE_MS = 120;
+
 /**
  * Splits an amount evenly in MINOR UNITS, giving the remainder to the earliest members.
  *
@@ -98,9 +110,20 @@ export function BudgetPanel({ tripId }: { tripId: string }) {
   }, [tripId, resyncSignal]);
 
   useEffect(() => {
-    return onOp((op) => {
-      if (BUDGET_OPS.has(op.kind)) void load();
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let cancelled = false;
+    const unsubscribe = onOp((op) => {
+      if (!BUDGET_OPS.has(op.kind)) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        if (!cancelled) void load();
+      }, OP_REFETCH_COALESCE_MS);
     });
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+      unsubscribe();
+    };
   }, [onOp, load]);
 
   // Default the payer to whoever is entering the expense — the common case by a distance.
@@ -120,7 +143,7 @@ export function BudgetPanel({ tripId }: { tripId: string }) {
   const largest = Math.max(1, ...balances.map(([, v]) => Math.abs(v)));
 
   // Settle-up: greedily match the biggest creditor to the biggest debtor. Minimal transfers
-  // are what a person actually wants ("pay Mira €40"), not a matrix of pairwise debts.
+  // are what a person actually wants ("pay Mira ₹40"), not a matrix of pairwise debts.
   const settlements: { from: string; to: string; amount: number }[] = [];
   {
     const debtors = balances.filter(([, v]) => v < 0).map(([id, v]) => [id, -v] as [string, number]);
@@ -358,10 +381,17 @@ export function BudgetPanel({ tripId }: { tripId: string }) {
           </div>
         )}
 
+        {/* Panel-level empty states share one treatment across the app — display heading,
+            py-14, a supporting line under it — because they are the same moment on three
+            screens. This one was the odd one out at body-weight and py-12; Itinerary
+            ("Nothing planned yet") and Memories ("Nothing to remember yet") were already the
+            heading form, and a heading that shrinks depending on which tab you are on reads
+            as a different app. Section-level empties (a day with no slots, a slot with no
+            options) stay deliberately quieter — they sit under a heading already. */}
         {entries !== null && list.length === 0 && (
-          <div className="rounded-card border border-dashed border-line bg-surface-raised px-6 py-12 text-center">
-            <p className="text-ui-md font-medium text-fg">Nothing recorded yet</p>
-            <p className="mx-auto mt-1 max-w-sm text-ui-sm text-fg-muted">
+          <div className="rounded-card border border-dashed border-line bg-surface-raised px-6 py-14 text-center">
+            <h2 className="font-display text-display-md text-fg">Nothing recorded yet</h2>
+            <p className="mx-auto mt-2 max-w-md text-ui-md text-fg-muted">
               Add what people have paid for and the split works itself out.
             </p>
           </div>

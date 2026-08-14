@@ -148,6 +148,28 @@
   --color-live: var(--color-accent-500);
   --color-live-tint: var(--color-accent-50);
 
+  /* SEMANTIC — SLOT CATEGORY TINTS.
+     Decorative classification, never status. Kept in their own block precisely so
+     nobody reads `kind-place` as an error state the way they would if `critical`
+     were borrowed to colour a category — red means "something is wrong" everywhere
+     else in this system, and a category is not wrong.
+
+     Two of the five reuse hues that already exist (amber, green); transport and
+     place needed hues the palette did not have, so they are added here at the same
+     very low chroma as the -50 steps, with an -ink partner at the ~7:1 depth the
+     rest of the palette uses for small text. Category is ALWAYS carried by the
+     label as well, so none of this is colour-alone. */
+  --color-kind-lodging: var(--color-accent-50);
+  --color-kind-lodging-ink: var(--color-accent-800);
+  --color-kind-activity: var(--color-positive-50);
+  --color-kind-activity-ink: var(--color-positive-700);
+  --color-kind-transport: #eef4fb;
+  --color-kind-transport-ink: #2f5480;
+  --color-kind-place: #f4f0fa;
+  --color-kind-place-ink: #5b4488;
+  --color-kind-note: var(--color-ink-100);
+  --color-kind-note-ink: var(--color-ink-600);
+
   /* --------------------------------------------------------------------------
      TYPE SCALE — DISPLAY (serif)
 

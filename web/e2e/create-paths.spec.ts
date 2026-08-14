@@ -147,6 +147,54 @@ test("an itinerary can be built from empty: day, slot, unscheduled slot, option,
     daySection.getByTestId("slot-row").filter({ hasText: "Find a day for the castle" })
   ).toHaveCount(0);
 
+  // ---- 3b. Things added in order STAY in order -------------------------------------------
+  //
+  // This is the assertion that would have caught the bug twice now. `after_slot_id: null` and
+  // `after_day_id: null` do not mean "append" — the repository reads a nil anchor as "insert
+  // before the first", so a client that always sends null builds the list backwards. The seed
+  // script had exactly this bug and it was fixed in e06fbf3; the UI create path reintroduced
+  // it, and every existing test stayed green because they all add ONE slot per bucket, where
+  // front and back are the same position.
+  //
+  // So: add two more slots to the day and assert the rendered sequence. Two is the minimum
+  // that can tell append from prepend, which is precisely why one was not enough.
+  for (const later of ["Late-night pastéis", "Walk back along the river"]) {
+    // The form deliberately stays open after a submit (adding one thing to a day is usually
+    // adding three), so the disclosure trigger is only present the first time.
+    const opener = daySection.getByTestId("add-slot-open");
+    if (await opener.count()) await opener.click();
+    await daySection.getByTestId("add-slot-title").fill(later);
+    await daySection.getByTestId("add-slot-submit").click();
+    await expect(daySection.getByTestId("slot-row").filter({ hasText: later })).toHaveCount(1, {
+      timeout: 15_000,
+    });
+  }
+  await expect
+    .poll(
+      async () =>
+        (await daySection.getByTestId("slot-row").allTextContents()).map((t) =>
+          t.replace(/\s+/g, " ").trim()
+        ),
+      { timeout: 15_000 }
+    )
+    .toEqual([
+      expect.stringContaining("Dinner in Alfama"),
+      expect.stringContaining("Late-night pastéis"),
+      expect.stringContaining("Walk back along the river"),
+    ]);
+
+  // Days too: a second day must come after the first, not before it.
+  await page.getByTestId("add-day-open").click();
+  await page.getByTestId("add-day-label").fill("Second day");
+  await page.getByTestId("add-day-submit").click();
+  await expect(page.getByTestId("day-section")).toHaveCount(2, { timeout: 15_000 });
+  await expect
+    .poll(async () => {
+      const headings = await page.getByTestId("day-section").locator("h2").allTextContents();
+      return headings.map((h) => h.trim());
+    })
+    .toEqual(["Arrival day", "Second day"]);
+
   // ---- 4. An option on the slot ---------------------------------------------------------
   await slotRow.click();
   await page.waitForURL(new RegExp(`/trips/${tripId}/plan/slots/`));
