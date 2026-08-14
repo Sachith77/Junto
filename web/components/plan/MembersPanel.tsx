@@ -241,9 +241,22 @@ export function MembersPanel({ tripId }: { tripId: string }) {
       {canInvite && (
         <section>
           <h2 className="font-display text-display-sm text-fg">Invite someone</h2>
-          <p className="mt-1 text-ui-sm text-fg-muted">
-            Send a single-use link to an address, or create one you can paste anywhere. Both
-            expire, and either can be revoked before it&rsquo;s used.
+          {/* One line. The expiry/revocation detail was permanent body text explaining a
+              mechanism nobody needs to know until they use it — and both facts are already
+              visible on each row in Pending invitations below ("expires 18 Aug", "Revoke").
+              Body copy that restates what the interface shows is copy that gets skipped, and
+              it was the longest paragraph on the screen. */}
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 text-ui-sm text-fg-muted">
+            <span>Invite by email, or create a link you can paste anywhere.</span>
+            <span
+              tabIndex={0}
+              role="note"
+              aria-label="Invitations expire, and can be revoked before they are used."
+              title="Invitations expire, and can be revoked before they are used."
+              className="cursor-help rounded-sm border-b border-dotted border-line-strong text-fg-subtle focus-visible:outline-2 focus-visible:outline-offset-2"
+            >
+              How long do they last?
+            </span>
           </p>
 
           {error && (

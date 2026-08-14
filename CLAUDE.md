@@ -766,13 +766,48 @@ What the frontend coverage actually is, stated so the next reader does not have 
 | Playwright e2e against the real stack | **real** — `web/e2e/`, no mocks, real Postgres/Redis/Mailpit/Go API |
 | Frontend in CI | **no** — Go only |
 
-**Update (2026-08-11).** The e2e half has grown and is now the whole of the frontend's coverage,
-deliberately: 6 correctness tests across `voting.spec.ts`, `access-and-revocation.spec.ts` and
-`create-paths.spec.ts`, all green together against the real stack. Still **no component tests
-and still not in CI** — an e2e run needs Postgres, Redis, Mailpit, the Go API and `next dev`, and
-takes ~4 minutes. That remains a real gap in *speed of feedback* rather than in correctness, and
-it is stated here rather than closed by writing tests whose only purpose is to make a sentence
-true.
+**Update (2026-08-11, extended 2026-08-15).** The e2e half has grown and is now the whole of
+the frontend's coverage, deliberately: 8 correctness tests across `voting.spec.ts`,
+`access-and-revocation.spec.ts`, `create-paths.spec.ts`, `budget-sync.spec.ts` and
+`trips-list.spec.ts`, all green together against the real stack in ~5 minutes.
+
+`trips-list.spec.ts` is the first test here about **geometry rather than behaviour**, and it
+exists because the trips grid regressed in a way nothing could catch: `priority={i < 2}` gave
+the first two cards a taller treatment, which at an ODD trip count leaves one short card beside
+a tall one. Nothing errored, nothing failed to load, the grid just looked broken — and it was
+reported by eye. The fixture deliberately uses THREE trips: at 2 or 4 the tall cards fill whole
+rows and the bug is invisible, so a two-trip fixture would have been green against the broken
+build. Asserts identical width and height to the pixel, plus a non-zero height so three
+collapsed elements cannot satisfy it. Verified against the original `priority={i < 2}` planted
+back in, which fails with "different heights (512, 512, 352px)". Still **no component tests and still not in CI** — an e2e run needs Postgres, Redis,
+Mailpit, the Go API and `next dev`. That remains a real gap in *speed of feedback* rather than
+in correctness, and it is stated here rather than closed by writing tests whose only purpose is
+to make a sentence true.
+
+**Ordering, pinned at last (2026-08-15).** `after_slot_id`/`after_day_id` do **not** mean
+"append" — a nil anchor is read by `NeighbourPositions` as "insert before the first", so a
+client that always sends null builds the itinerary backwards. This bug has now appeared
+**twice**: once in the seed script (fixed in `e06fbf3`) and again in the UI create path added
+in Stage 3 Slice 4, where it survived because every test added exactly ONE slot per bucket —
+and with one item, front and back are the same position. `create-paths.spec.ts` now adds
+**two** more slots and a second day and asserts the rendered sequence, two being the minimum
+that can tell append from prepend. Verified against the original bug planted back into both
+`createSlot` and `createDay`.
+
+**Known flake (2026-08-15).** `create-paths.spec.ts` › "a shareable link invite … screens stay
+in sync" failed once in a full-suite run at its last assertion — the joiner's client not
+receiving a slot created by the owner within 20s — then passed standalone and on a clean
+full-suite re-run. Two browser contexts, an invite redemption and a live socket assertion make
+it the heaviest test in the suite. Recorded so a future occurrence starts from "this has
+happened before, at the same assertion" rather than from scratch; if it recurs, suspect the
+socket subscription racing the redemption rather than the create path itself.
+
+`budget-sync.spec.ts` is the newest and was written to pin a fix rather than a feature:
+`BudgetPanel` refetched the entire ledger on every `budget.*` operation with no coalescing
+window, unlike `Itinerary`. Its two assertions are deliberately paired — every write must
+*arrive*, and the burst must collapse into ~1 refetch — because the count assertion alone is
+satisfied perfectly by a dead socket that fetches nothing. Verified against a planted break:
+restoring the un-coalesced effect gives "5 budget ops caused 5 ledger refetches" and fails.
 
 **Why this was corrected rather than backfilled.** Writing thirteen component tests to make a
 sentence true is precisely the coverage-gaming this file warns against two paragraphs up, and
@@ -933,3 +968,4 @@ These checks exist because the claims they back are otherwise unfalsifiable:
   still partial), `op_seq` rolling back with its transaction so the log stays gapless, a
   non-positive `seq` rejected, and no trigger or rule able to rewrite `trip_ops`. Runs in a
   rolled-back transaction, so it is safe against a populated database.
+

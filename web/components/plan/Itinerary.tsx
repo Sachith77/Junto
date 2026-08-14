@@ -25,7 +25,38 @@ const KIND_LABEL: Record<string, string> = {
   note: "Note",
 };
 
+/** A quiet tint per kind, so a day's shape is scannable before any of it is read.
+ *
+ *  The previous badge was one grey chip for every kind — uppercase, boxed, and the heaviest
+ *  thing on a row whose actual subject is the title beside it. These are the same size and
+ *  weight as before but sit at ~50-tint backgrounds with a 700-step label, which is the
+ *  contrast pairing the rest of the palette already uses for quiet status text.
+ *
+ *  The tints are tokens (--color-kind-*), not literals, and two of the five reuse hues the
+ *  palette already had. `critical` was deliberately NOT borrowed for a category: red means
+ *  "something is wrong" everywhere else in this system, and a category is not wrong. Category
+ *  is carried by the LABEL; the tint only makes the label findable, so nothing here depends
+ *  on colour alone. */
+const KIND_TINT: Record<string, string> = {
+  lodging: "bg-kind-lodging text-kind-lodging-ink",
+  activity: "bg-kind-activity text-kind-activity-ink",
+  transport: "bg-kind-transport text-kind-transport-ink",
+  place: "bg-kind-place text-kind-place-ink",
+  note: "bg-kind-note text-kind-note-ink",
+};
+
 const KINDS = Object.keys(KIND_LABEL) as SlotKind[];
+
+/** Last id in an ordered bucket, or null when it is empty.
+ *
+ *  Exists so every call site reads the same way: the anchor for "add to the end" is always
+ *  the last thing currently there, and null is reserved for a genuinely empty bucket — where
+ *  "insert before the first" and "append" happen to mean the same thing. */
+function lastIdOf(items: { slot: Slot }[] | Day[] | undefined): string | null {
+  if (!items || items.length === 0) return null;
+  const last = items[items.length - 1];
+  return "slot" in last ? last.slot.id : last.id;
+}
 
 interface SlotSummary {
   slot: Slot;
@@ -174,7 +205,7 @@ export function Itinerary({ tripId }: { tripId: string }) {
         </p>
         {canEdit ? (
           <div className="mx-auto mt-6 max-w-sm text-left">
-            <AddDay tripId={tripId} dayCount={0} onAdded={refresh} />
+            <AddDay tripId={tripId} dayCount={0} afterDayId={null} onAdded={refresh} />
           </div>
         ) : (
           <p className="mt-6 text-ui-sm text-fg-subtle">
@@ -204,7 +235,14 @@ export function Itinerary({ tripId }: { tripId: string }) {
             )}
           </div>
           <SlotRows tripId={tripId} entries={slots[day.id] ?? []} flashProps={flashProps} />
-          {canEdit && <AddSlot tripId={tripId} dayId={day.id} onAdded={refresh} />}
+          {canEdit && (
+            <AddSlot
+              tripId={tripId}
+              dayId={day.id}
+              afterSlotId={lastIdOf(slots[day.id])}
+              onAdded={refresh}
+            />
+          )}
         </section>
       ))}
 
@@ -215,17 +253,24 @@ export function Itinerary({ tripId }: { tripId: string }) {
             <span className="text-ui-xs text-fg-subtle">not yet placed on a day</span>
           </div>
           <SlotRows tripId={tripId} entries={backlog} flashProps={flashProps} />
-          {canEdit && <AddSlot tripId={tripId} dayId={null} onAdded={refresh} />}
+          {canEdit && (
+            <AddSlot
+              tripId={tripId}
+              dayId={null}
+              afterSlotId={lastIdOf(backlog)}
+              onAdded={refresh}
+            />
+          )}
         </section>
       )}
 
       {canEdit && (
         <div className="flex flex-wrap items-center gap-2 border-t border-line-subtle pt-6">
-          <AddDay tripId={tripId} dayCount={days.length} onAdded={refresh} />
+          <AddDay tripId={tripId} dayCount={days.length} afterDayId={lastIdOf(days)} onAdded={refresh} />
           {/* Offered here only while the backlog is empty — once it has rows it has its own
               section above, and two entry points to one form is one too many. */}
           {backlog.length === 0 && (
-            <AddSlot tripId={tripId} dayId={null} onAdded={refresh} trigger="inline" />
+            <AddSlot tripId={tripId} dayId={null} afterSlotId={null} onAdded={refresh} trigger="inline" />
           )}
         </div>
       )}
@@ -239,11 +284,15 @@ export function Itinerary({ tripId }: { tripId: string }) {
 function AddSlot({
   tripId,
   dayId,
+  afterSlotId,
   onAdded,
   trigger = "block",
 }: {
   tripId: string;
   dayId: string | null;
+  /** The last slot currently in this bucket, so a new one lands after it rather than before
+   *  the first (see createSlot). Null when the bucket is empty, which is then correct. */
+  afterSlotId: string | null;
   onAdded: () => void | Promise<void>;
   /** "block" sits under a day's rows as a full-width dashed target; "inline" sits in a row
    *  of page-level actions, where a dashed block would read as an empty list. */
@@ -262,7 +311,7 @@ function AddSlot({
     setBusy(true);
     setError(null);
     try {
-      await createSlot(tripId, { dayId, kind, title: title.trim(), startTime });
+      await createSlot(tripId, { dayId, kind, title: title.trim(), startTime, afterSlotId });
       // Reset rather than close: adding one thing to a day is almost always adding three.
       setTitle("");
       setStartTime("");
@@ -374,10 +423,13 @@ function AddSlot({
 function AddDay({
   tripId,
   dayCount,
+  afterDayId,
   onAdded,
 }: {
   tripId: string;
   dayCount: number;
+  /** The last existing day, so a new one is appended rather than pushed to the front. */
+  afterDayId: string | null;
   onAdded: () => void | Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -396,6 +448,7 @@ function AddDay({
       await createDay(tripId, {
         label: label.trim() || `Day ${dayCount + 1}`,
         date: date || null,
+        afterDayId,
       });
       setLabel("");
       setDate("");
@@ -480,7 +533,7 @@ function SlotRows({
   if (entries.length === 0) {
     return (
       <p className="rounded-card border border-dashed border-line-subtle px-4 py-6 text-center text-ui-sm text-fg-subtle">
-        No slots on this day yet.
+        No slots on this day yet
       </p>
     );
   }
@@ -489,9 +542,17 @@ function SlotRows({
     <ul className="space-y-2">
       {entries.map(({ slot, options }) => {
         const chosen = options.find((o) => o.id === slot.selected_option_id);
+        // The flash goes on the LINK, not the <li>.
+        //
+        // On the <li> it was invisible: the link paints an opaque bg-surface-raised over the
+        // whole row, so the tint animated underneath it and never reached a pixel. Measured
+        // before the move — the li animated to rgba(254,246,236,0.71) while the link sat at
+        // rgb(255,255,255) on top of it. Putting it on the element that OWNS the background is
+        // what BudgetPanel already did, which is why Budget's flash worked and this one did not.
         return (
-          <li key={slot.id} {...flashProps(slot.id)}>
+          <li key={slot.id}>
             <Link
+              {...flashProps(slot.id)}
               href={`/trips/${tripId}/plan/slots/${slot.id}`}
               data-testid="slot-row"
               className="flex items-center gap-4 rounded-card border border-line-subtle bg-surface-raised px-4 py-3 transition-colors hover:border-line-strong"
@@ -502,7 +563,15 @@ function SlotRows({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate text-ui-md font-medium text-fg">{slot.title}</span>
-                  <span className="shrink-0 rounded-xs bg-surface-sunken px-1.5 py-0.5 text-ui-2xs font-medium uppercase tracking-[0.08em] text-fg-muted">
+                  {/* Sentence case, not uppercase, and a rounded-full pill rather than a box:
+                      the previous chip was uppercase + tracked + boxed, which is the styling
+                      this system reserves for things that matter more than the title they sit
+                      next to. It read as a debug label. */}
+                  <span
+                    className={`shrink-0 rounded-full px-2 py-0.5 text-ui-2xs font-medium ${
+                      KIND_TINT[slot.kind] ?? KIND_TINT.note
+                    }`}
+                  >
                     {KIND_LABEL[slot.kind] ?? slot.kind}
                   </span>
                 </div>
@@ -538,9 +607,12 @@ function ResolutionPill({ decided, candidates }: { decided: boolean; candidates:
       </span>
     );
   }
+  // "Empty" was the one label in this family written in schema language rather than product
+  // language — and it sat on the same row as "No options proposed yet", saying the same thing
+  // twice in two registers. The decision states are now Chosen / Undecided / No options.
   return (
     <span className="shrink-0 rounded-xs border border-line px-2 py-1 text-ui-2xs font-medium text-fg-muted">
-      {candidates > 0 ? "Undecided" : "Empty"}
+      {candidates > 0 ? "Undecided" : "No options"}
     </span>
   );
 }

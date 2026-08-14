@@ -33,8 +33,24 @@ export function tripNights(start: string | null, end: string | null): number | n
   return nights > 0 ? nights : null;
 }
 
+/** Grouping is a property of the CURRENCY's home locale, not of the reader's.
+ *
+ *  Rupees group in lakhs and crores — ₹12,34,567.89, not ₹1,234,567.89 — and formatting them
+ *  with en-GB produces a number that is technically parseable and visibly foreign. Anything
+ *  not listed falls back to en-GB, which is what the rest of the app already uses for dates. */
+const CURRENCY_LOCALE: Record<string, string> = {
+  INR: "en-IN",
+};
+
 /** Money arrives as bigint minor units (D43) and must never be reconstructed
- *  through a float — 45000/100 is fine, but the pattern is what matters. */
-export function formatMoney(minor: number, currency = "EUR"): string {
-  return new Intl.NumberFormat("en-GB", { style: "currency", currency }).format(minor / 100);
+ *  through a float — 45000/100 is fine, but the pattern is what matters.
+ *
+ *  The default is INR. Note that `trips.base_currency` exists in the schema (default 'USD')
+ *  but is carried by neither `domain.Trip` nor the trip wire type, so there is currently no
+ *  per-trip currency to read — this default IS the currency the product displays. When that
+ *  column is wired through, this argument is where it lands, and the schema default should be
+ *  brought into line at the same time rather than leaving two disagreeing defaults. */
+export function formatMoney(minor: number, currency = "INR"): string {
+  const locale = CURRENCY_LOCALE[currency] ?? "en-GB";
+  return new Intl.NumberFormat(locale, { style: "currency", currency }).format(minor / 100);
 }
