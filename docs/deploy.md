@@ -210,8 +210,21 @@ curl -s https://junto-api.onrender.com/healthz | jq
 
 Expect `"status": "ok"`, `postgres` reporting `"status": "ok"`, **no** `redis` entry in
 `checks` at all (not "down" — absent, confirming the probe correctly skipped it), and
-`"version"` showing a real git hash, not `"dev"`. If it says `dev`, the builder lost the VCS
-stamp — check `.dockerignore` has not started excluding `.git`.
+`"version"` showing a real git hash, not `"dev"`.
+
+**If it says `dev` anyway**, this is not a `.dockerignore` problem — that was the first
+hypothesis on the actual first deploy, and it was ruled out directly: a fresh `--no-cache`
+local build from this exact `Dockerfile` and `.dockerignore` produces a correct
+`vcs.revision` every time (verified against a real image, not assumed). The real cause was
+Render's own build pipeline: whatever it hands to `docker build` as context does not appear to
+include a usable `.git` directory, which Go's automatic VCS stamping needs and Render does not
+document either way. `cmd/api/health.go`'s `buildVersion()` now falls back to
+`RENDER_GIT_COMMIT` — a runtime env var Render sets to the deployed commit SHA, documented as
+available for `runtime: docker` services with no plan-tier restriction mentioned — when the
+git-based stamp comes back empty. If `/healthz` still says `dev` after this fix ships, the
+fallback itself needs checking: confirm `RENDER_GIT_COMMIT` is actually set on the running
+instance's Environment tab in the dashboard, since its runtime availability was not something
+a documentation search alone could confirm with certainty.
 
 Also worth confirming here, since it's now unverified rather than configured: watch a deploy's
 old instance actually shut down cleanly within Render's (now unconfigurable) default window

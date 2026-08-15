@@ -20,6 +20,13 @@ FROM golang:1.26-alpine AS build
 # /healthz reports as its version (cmd/api/health.go). Without git in the builder, Go omits
 # the stamp silently and every deploy reports itself as "dev" — a health endpoint that cannot
 # tell you which build is running is most of the way to useless.
+#
+# Installing git here is necessary but was found NOT sufficient on Render specifically: Render's
+# own build pipeline does not appear to hand `docker build` a context containing a usable `.git`
+# directory, independent of anything in this Dockerfile or .dockerignore (confirmed by a fresh
+# local --no-cache build of this exact file producing a correct vcs.revision every time, which
+# ruled out this repo's own configuration as the cause). cmd/api/health.go falls back to Render's
+# RENDER_GIT_COMMIT runtime env var when the git-based stamp is empty — see the comment there.
 RUN apk add --no-cache git ca-certificates
 
 WORKDIR /src

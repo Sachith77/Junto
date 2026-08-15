@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"os"
 	"runtime/debug"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -64,14 +65,56 @@ func healthProbes(pool *pgxpool.Pool, redisClient *redis.Client) []junto.Probe {
 
 // buildVersion reports the running build, for /healthz.
 //
-// Read from the embedded VCS stamp Go writes into every binary built from a git checkout, so
-// it needs no ldflags in the Dockerfile and cannot drift from a hand-maintained constant. It
-// degrades to "dev" when that information is absent, which is the honest answer for `go run`
-// and for a build from a dirty or exported tree.
+// Two sources, tried in order — and the reason there are two rather than one is a real finding
+// from the first Render deploy, not a hedge added in advance.
+//
+//  1. The embedded VCS stamp Go writes into every binary built from a `git checkout` with
+//     `.git` present alongside the source it is compiling. This needs no ldflags and cannot
+//     drift from a hand-maintained constant, which is why it stays the PRIMARY source — it is
+//     confirmed correct for every build path this project controls directly: `go run`,
+//     `docker build` run locally (verified against a real image: a fresh `--no-cache` build
+//     produced `vcs.revision=9e2c50e6e757...` matching `HEAD` exactly), and CI.
+//  2. `RENDER_GIT_COMMIT`, which Render sets to the deployed commit SHA. This is the fallback,
+//     used only when (1) comes back empty — which is exactly what happened on the first real
+//     Render deploy: `/healthz` reported "dev" even though the Dockerfile and `.dockerignore`
+//     were independently proven correct by the same local rebuild referenced above. That
+//     isolates the cause to Render's build pipeline specifically: whatever Render hands to
+//     `docker build` as context, it does not appear to include a `.git` directory Go's
+//     toolchain can read — Render does not document this either way, so it was confirmed by
+//     elimination (our Dockerfile works everywhere `.git` is present; it stops working only
+//     on Render) rather than found stated anywhere.
+//
+// RENDER_GIT_COMMIT is documented as available at both build time AND runtime, with no
+// exception noted for Docker-runtime services specifically and no plan-tier restriction
+// mentioned — unlike `preDeployCommand` and `maxShutdownDelaySeconds`, both of which turned
+// out to be free-tier-rejected despite identically silent docs. Reading it here at RUNTIME via
+// os.Getenv, rather than threading it through as a Docker build-arg and baking it in via
+// ldflags, is deliberately the simpler of the two available mechanisms: it needed zero
+// Dockerfile changes and zero new build-time plumbing, only this fallback. **Not yet confirmed
+// by an actual Render deploy showing a real hash** — the absence of a documented tier
+// restriction is not the same as a deploy proving it works, and that is the next thing to
+// check after this ships.
+//
+// A build with neither source available (a `go run` with no git repo present, or a context
+// that also lacks RENDER_GIT_COMMIT) still degrades to "dev" — the same honest fallback as
+// before, not a new failure mode.
 func buildVersion() string {
+	if v := gitBuildVersion(); v != "" {
+		return v
+	}
+	if commit := os.Getenv("RENDER_GIT_COMMIT"); commit != "" {
+		return truncateRevision(commit)
+	}
+	return "dev"
+}
+
+// gitBuildVersion reads Go's embedded VCS stamp. Returns "" — not "dev" — when unavailable, so
+// buildVersion can tell "nothing here" apart from "checked and there is truly nothing at all"
+// and fall through to RENDER_GIT_COMMIT before giving up.
+func gitBuildVersion() string {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
-		return "dev"
+		return ""
 	}
 	var revision, modified string
 	for _, setting := range info.Settings {
@@ -83,15 +126,22 @@ func buildVersion() string {
 		}
 	}
 	if revision == "" {
-		return "dev"
+		return ""
 	}
-	if len(revision) > 12 {
-		revision = revision[:12]
-	}
+	revision = truncateRevision(revision)
 	if modified == "true" {
 		// An uncommitted build is worth flagging: "the deploy is on abc123" means something
-		// different when abc123 is only approximately what is running.
+		// different when abc123 is only approximately what is running. RENDER_GIT_COMMIT has
+		// no equivalent signal — a platform deploying a pushed commit has no "dirty tree" to
+		// report — so this suffix is specific to the git-stamp path and does not carry over.
 		return revision + "-dirty"
 	}
 	return revision
+}
+
+func truncateRevision(rev string) string {
+	if len(rev) > 12 {
+		return rev[:12]
+	}
+	return rev
 }
