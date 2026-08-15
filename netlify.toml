@@ -11,11 +11,22 @@
   base = "web"
   command = "npm run build"
 
-  # No `publish` here, deliberately. Netlify's own docs are explicit that Publish directory
-  # is set automatically by the Next.js Runtime once it correctly locates the project (which
-  # `base` above is what makes possible) — setting it by hand is what their docs warn against,
-  # not a missing step. This is true whether the Runtime activates via auto-detection or, as
-  # below, via an explicit plugin declaration: publish is the Runtime's to manage either way.
+  # `publish` IS set by hand here, reversing the earlier version of this file — worth being
+  # explicit about why rather than silently flipping position. The general Netlify guidance
+  # ("the Runtime sets publish automatically, don't set it yourself") describes the simple,
+  # single-project, auto-detected case. For a MONOREPO with the plugin declared explicitly —
+  # this repo, where web/ sits alongside an unrelated Go backend — Netlify's own plugin docs
+  # describe a different, equally official pattern: point `publish` at the `.next` directory
+  # (or a custom `distDir`) yourself. Both pieces of guidance are real; they apply to different
+  # setups, and this is the monorepo one.
+  #
+  # The value is `.next`, NOT `web/.next`. Confirmed against Netlify's own docs before writing
+  # this, because it is exactly the kind of thing worth getting wrong quietly: paths in
+  # netlify.toml resolve RELATIVE TO `base` once `base` is set (Netlify's own example: with
+  # base = "my-app", publish = "build" means my-app/build) — so repeating the "web" prefix here
+  # would double it to web/web/.next relative to the repo root, a directory that does not
+  # exist. `.next` alone is what "web/.next" was reaching for.
+  publish = ".next"
 
 # Declared explicitly rather than left to auto-detection. @netlify/plugin-nextjs is still
 # actively maintained (not superseded by the newer OpenNext-based adapter yet, as of this
