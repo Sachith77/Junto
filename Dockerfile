@@ -56,9 +56,9 @@ USER 65532:65532
 
 EXPOSE 8080
 
-# No HEALTHCHECK instruction: Fly runs the checks declared in fly.toml against /livez and
-# /readyz, and a second, differently-configured probe inside the image would be one more
-# thing to keep in step for no gain. A compose-based deployment should add one — see
+# No HEALTHCHECK instruction: the deploy target (Render) reads healthCheckPath from
+# render.yaml, and a second, differently-configured probe baked into the image would be one
+# more thing to keep in step for no gain. A compose-based deployment should add one — see
 # docs/deploy.md.
 
 ENTRYPOINT ["/api"]
