@@ -35,5 +35,10 @@ Thumbs.db
 # Claude Code — personal permission allowlist, not shared project config
 .claude/settings.local.json
 
+# AI-tooling-specific files kept locally, not published — untracked rather than deleted, so
+# they stay exactly as they are on disk for local use.
+/CLAUDE.md
+/docs/stage2-sync-design.md
+
 # Design-review screenshots (regenerated on demand)
 /web/shots/
