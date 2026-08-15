@@ -18,13 +18,14 @@ services:
     dockerfilePath: ./Dockerfile
     dockerContext: .
 
-    # Runs the SAME image that is about to serve traffic, so the schema can never be applied
-    # by a different build than the one running against it — identical reasoning to Fly's
-    # release_command (D-series decisions on migration safety). Verify on the first deploy:
-    # watch the build logs for this step actually running before the service starts serving,
-    # since preDeployCommand's exact interaction with a `runtime: docker` service (as opposed
-    # to a buildpack one) was not something Render's own docs stated explicitly.
-    preDeployCommand: /migrate up
+    # NO preDeployCommand: Render's Blueprint validator rejects it on the free plan (confirmed
+    # by the actual rejection, not by docs — Render does not document this restriction anywhere
+    # findable, it just refuses the field). This is a real loss, not a cosmetic one: the free
+    # tier has no equivalent of Fly's release_command or a plain "run this before traffic
+    # arrives" hook, so migrations do NOT run automatically on this tier at all. See
+    # "Running migrations — manual, on every schema-changing deploy" in docs/deploy.md for the
+    # exact replacement procedure and, more importantly, why it has to run BEFORE the deploy
+    # rather than after.
 
     # Render assigns PORT itself (default 10000) and passes it into the container; setting a
     # PORT env var of our own disables Render's port auto-detection for no benefit. Simpler to
@@ -48,13 +49,21 @@ services:
     # routing traffic to a broken instance.
     healthCheckPath: /livez
 
-    # Render's equivalent of Fly's kill_timeout: the window between SIGTERM and SIGKILL.
-    # Default is 30s if omitted; raised here for the same reason Fly's was raised to 40 —
-    # HTTP_DRAIN_DELAY + HTTP_SHUTDOWN_TIMEOUT below must finish comfortably inside it, or a
-    # slow shutdown gets killed mid-drain, which is worse than no drain at all (connections
-    # cut at an arbitrary point instead of a chosen one). 5 + 15 = 20s of intended shutdown
-    # time against a 60s budget is generous margin, not a tight fit.
-    maxShutdownDelaySeconds: 60
+    # NO maxShutdownDelaySeconds: also rejected by the free-plan Blueprint validator, same as
+    # preDeployCommand above. This one is not a hard loss — it only ever RAISES the window
+    # past Render's platform default, which Render's own docs state plainly is 30s when the
+    # field is absent: "a configurable shutdown delay (default 30 seconds)... if the process is
+    # still running after the shutdown delay, Render sends SIGKILL." Nothing found confirms
+    # that default differently for the free tier specifically, and the field itself being
+    # paid-only strongly suggests the baseline is shared and only the ability to RAISE it is
+    # gated — but that is an inference from the general product docs, not a free-tier-specific
+    # confirmation, so it is stated here as such rather than asserted outright.
+    #
+    # HTTP_DRAIN_DELAY + HTTP_SHUTDOWN_TIMEOUT below is 5 + 15 = 20s of intended shutdown time
+    # against an assumed-30s budget — 10s of margin, not the 40s of margin the earlier
+    # (rejected) maxShutdownDelaySeconds: 60 gave. Real margin, not a tight fit, but genuinely
+    # smaller than before and worth watching on the first real deploy: if shutdown is ever slow
+    # enough to threaten that 10s, this is the number to revisit.
 
     envVars:
       - key: JUNTO_ENV
