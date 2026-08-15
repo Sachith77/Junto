@@ -1,7 +1,7 @@
 # Deploying Junto
 
-Backend on **Render** (Docker web service + free Postgres), frontend on **Vercel**. No Redis in
-this deploy — see *Redis: a deliberate scope decision*, below, before assuming that is a gap.
+Backend on **Render** (Docker web service + free Postgres), frontend on **Netlify**. No Redis
+in this deploy — see *Redis: a deliberate scope decision*, below, before assuming that is a gap.
 
 This was originally written for Fly.io. It was retargeted because Fly's free allowance still
 asks for a card at signup; Render's free tier genuinely does not. `render.yaml` at the repo
@@ -157,7 +157,7 @@ right now rather than expecting to edit `render.yaml` to change them later:
 |---|---|
 | `JWT_SECRET` | `openssl rand -base64 48` — at least 32 bytes, config validation refuses shorter |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | Real SMTP credentials. **Not optional in production** — see below |
-| `WEB_BASE_URL`, `CORS_ALLOWED_ORIGINS` | The Vercel frontend's URL, once you know it (step 6) — a placeholder is fine for now, update after |
+| `WEB_BASE_URL`, `CORS_ALLOWED_ORIGINS` | The Netlify frontend's URL, once you know it (step 6) — a placeholder is fine for now, update after |
 
 **SMTP is load-bearing, not a nice-to-have.** `AUTH_AUTO_VERIFY_EMAIL` is refused outright by
 config validation in production (D105) — confirmed as pure application logic, gated only on
@@ -242,18 +242,61 @@ Also worth confirming here, since it's now unverified rather than configured: wa
 old instance actually shut down cleanly within Render's (now unconfigurable) default window
 rather than getting killed abruptly — see *Shutdown timing*, above.
 
-### 6. Deploy the frontend to Vercel
+### 6. Deploy the frontend to Netlify
 
-```bash
-cd web
-vercel # first run links/creates the project and prompts for settings
+`netlify.toml` at the repo root is checked in and does the structural work — **for a fresh
+deploy this should just work** without touching the dashboard's build settings at all, which
+is the whole reason it exists rather than living only in Netlify's UI:
+
+```toml
+[build]
+  base = "web"
+  command = "npm run build"
+  publish = ".next"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
 ```
 
-Set `NEXT_PUBLIC_API_URL` to `https://junto-api-ljtx.onrender.com` in Vercel's project environment
-variables. Once Vercel gives you the frontend's URL, go back to Render's dashboard and set
-`WEB_BASE_URL` and `CORS_ALLOWED_ORIGINS` to it (both — they must match, or invitation links
-resolve to a different origin than the one CORS allows to call the API). A manual redeploy
-picks up the change; Render env var updates alone do not restart the service.
+In the Netlify dashboard: **Add new site → Import an existing project**, point it at the repo.
+Netlify reads `netlify.toml` automatically once it finds it — there is no separate "connect
+the Next.js Runtime" step to remember.
+
+Set `NEXT_PUBLIC_API_URL` to `https://junto-api-ljtx.onrender.com` under **Site configuration →
+Environment variables**. Once Netlify gives you the site's URL, go back to Render's dashboard
+and set `WEB_BASE_URL` and `CORS_ALLOWED_ORIGINS` to it (both — they must match, or invitation
+links resolve to a different origin than the one CORS allows to call the API). A manual
+redeploy picks up the change; Render env var updates alone do not restart the service.
+
+#### What actually went wrong on the real deploy, and why `netlify.toml` looks like this
+
+Recorded because both failures were silent — nothing errored, the site just didn't work, and
+each one needed comparing raw HTTP response headers to tell apart from "the backend is down."
+
+**First attempt, no `netlify.toml` at all: every path returned Netlify's own generic 404.**
+This repo is a monorepo — `web/` holds the Next.js project, the root holds an unrelated Go
+backend — and Next.js's zero-config auto-detection only works once Netlify can actually find
+`next.config.ts`. Left at the default base directory (the repo root), it never did, the
+Next.js Runtime never activated, and Netlify fell back to serving nothing. The tell was in the
+response itself: `Server: Netlify` and Netlify's own branded 404 HTML template, not this app's
+markup and not Next's default 404 page. `base = "web"` fixes the lookup.
+
+**Second problem, after `base = "web"` alone: still not working, because a UI-configured
+publish directory was conflicting with the file-based config.** The general Netlify guidance —
+"the Next.js Runtime sets the publish directory automatically, don't set it by hand" —
+describes the simple, single-project, auto-detected case. Netlify's own plugin docs describe a
+*separate*, equally official pattern for a monorepo with the plugin declared explicitly: point
+`publish` at the `.next` directory yourself. This repo is that second case, which is why
+`publish` is set here despite the general advice against it, and why `[[plugins]]` is
+declared explicitly rather than left to auto-detection — explicit beats implicit for the same
+reason `base` is checked into the repo instead of living only in the dashboard.
+
+**The value is `.next`, not `web/.next`.** This is the one detail most likely to get silently
+re-broken by someone reasoning from first principles later: once `base` is set, every other
+path in `netlify.toml` — including `publish` — resolves *relative to* `base`, not the repo
+root. Netlify's own documented example states this plainly: with `base = "my-app"`,
+`publish = "build"` means `my-app/build`. Writing `web/.next` here would resolve to
+`web/web/.next`, a directory that does not exist.
 
 ---
 
