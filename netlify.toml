@@ -14,5 +14,14 @@
   # No `publish` here, deliberately. Netlify's own docs are explicit that Publish directory
   # is set automatically by the Next.js Runtime once it correctly locates the project (which
   # `base` above is what makes possible) — setting it by hand is what their docs warn against,
-  # not a missing step. The Runtime itself is zero-config as of Netlify's current OpenNext-
-  # based adapter: no plugin needs declaring here for a supported Next.js version.
+  # not a missing step. This is true whether the Runtime activates via auto-detection or, as
+  # below, via an explicit plugin declaration: publish is the Runtime's to manage either way.
+
+# Declared explicitly rather than left to auto-detection. @netlify/plugin-nextjs is still
+# actively maintained (not superseded by the newer OpenNext-based adapter yet, as of this
+# writing) — confirmed rather than assumed, since the package landscape here has been shifting.
+# Explicit beats implicit for the same reason `base` above is checked into the repo instead of
+# living only in the dashboard: it is one less thing that can be silently wrong somewhere
+# neither of us can see.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
