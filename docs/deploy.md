@@ -129,6 +129,16 @@ subdomains, Render's `.onrender.com` hostnames are global, and `junto-api` may a
 taken; rename it in `render.yaml` first if so, since `PUBLIC_BASE_URL` in the same file has to
 match whatever name you land on.
 
+**This is not a hypothetical.** `junto-api` was taken on the actual deploy, Render silently
+assigned `junto-api-ljtx` instead, and `PUBLIC_BASE_URL` kept pointing at the unclaimed
+`junto-api.onrender.com` — which doesn't error, it just answers every request with Render's
+own generic "no server" response, indistinguishable from the app being down without checking
+response headers closely (`x-render-routing: no-server` and `Server: cloudflare`, versus this
+app's own JSON 404s). Caught only when a live diagnosis compared the two responses byte for
+byte. **After creating the Blueprint, immediately confirm the actual assigned hostname** shown
+at the top of the service page before doing anything else — don't assume it matches
+`render.yaml`.
+
 **Render will immediately try to build and boot `junto-api`, and it will fail.** Expect this —
 the database Blueprint just created is empty, no migration hook exists on this plan (see
 below), and the app's own boot sequence deliberately refuses to start listening against an
@@ -205,7 +215,9 @@ table exists is the ordering that breaks.
 ### 5. Verify
 
 ```bash
-curl -s https://junto-api.onrender.com/healthz | jq
+curl -s https://junto-api-ljtx.onrender.com/healthz | jq
+# ^ the ACTUAL assigned hostname — confirm yours from the service page, don't assume it
+#   matches render.yaml's PUBLIC_BASE_URL blindly. See the note on step 2, above.
 ```
 
 Expect `"status": "ok"`, `postgres` reporting `"status": "ok"`, **no** `redis` entry in
@@ -237,7 +249,7 @@ cd web
 vercel # first run links/creates the project and prompts for settings
 ```
 
-Set `NEXT_PUBLIC_API_URL` to `https://junto-api.onrender.com` in Vercel's project environment
+Set `NEXT_PUBLIC_API_URL` to `https://junto-api-ljtx.onrender.com` in Vercel's project environment
 variables. Once Vercel gives you the frontend's URL, go back to Render's dashboard and set
 `WEB_BASE_URL` and `CORS_ALLOWED_ORIGINS` to it (both — they must match, or invitation links
 resolve to a different origin than the one CORS allows to call the API). A manual redeploy

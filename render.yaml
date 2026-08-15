@@ -100,7 +100,15 @@ services:
       # WARN log line at boot — not a crash, not a degraded health check (the Redis probe in
       # cmd/api/health.go is only registered when a Redis client exists at all).
       - key: PUBLIC_BASE_URL
-        value: https://junto-api.onrender.com # update if you renamed the service
+        # "junto-api" was taken, so Render assigned "junto-api-ljtx" instead — the exact
+        # collision this field's old comment warned about, caught only once traffic against
+        # the wrong hostname was diagnosed as Render's own "no-server" response rather than
+        # anything from this app. Checked before fixing, not assumed: PublicBaseURL has
+        # exactly one consumer in the whole codebase (configs/config.go's production
+        # https:// check) and is never used to build a link — every generated link
+        # (verify-email, reset-password, invitation-accept) uses WebBaseURL instead. So this
+        # was wrong without ever having produced a dead link; still worth being correct.
+        value: https://junto-api-ljtx.onrender.com
       - key: WEB_BASE_URL
         sync: false # the Vercel frontend URL — set once the frontend is deployed; see deploy.md
       - key: CORS_ALLOWED_ORIGINS
