@@ -1,0 +1,124 @@
+# Junto API on Render (retargeted from Fly.io — see docs/deploy.md for why and what changed).
+#
+# Rename the service before the first deploy if "junto-api" is taken — Render hostnames are
+# global (junto-api.onrender.com), same constraint Fly's junto-api.fly.dev had. Everything else
+# here is deliberate; see docs/deploy.md for the secrets checklist and the runbook.
+#
+# Redis is DELIBERATELY absent from this file. See docs/deploy.md and CLAUDE.md — the
+# multi-instance / Redis pub/sub claim is proven by tests/multi_instance_api_test.go in CI,
+# not demonstrated by this live deploy, which is a single Render instance with no REDIS_URL.
+
+services:
+  - type: web
+    name: junto-api
+    runtime: docker
+    plan: free
+    region: singapore # closest Render region to India; no Mumbai option (checked: oregon,
+    # ohio, virginia, frankfurt, singapore are the only five as of this writing)
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+
+    # Runs the SAME image that is about to serve traffic, so the schema can never be applied
+    # by a different build than the one running against it — identical reasoning to Fly's
+    # release_command (D-series decisions on migration safety). Verify on the first deploy:
+    # watch the build logs for this step actually running before the service starts serving,
+    # since preDeployCommand's exact interaction with a `runtime: docker` service (as opposed
+    # to a buildpack one) was not something Render's own docs stated explicitly.
+    preDeployCommand: /migrate up
+
+    # Render assigns PORT itself (default 10000) and passes it into the container; setting a
+    # PORT env var of our own disables Render's port auto-detection for no benefit. Simpler to
+    # just point our own HTTP_ADDR at Render's default instead of fighting it — see envVars.
+    #
+    # healthCheckPath is /livez, NOT /readyz, and this is a real platform-specific decision,
+    # not a copy-paste of the Fly config. Render's health check does DOUBLE DUTY: it gates
+    # traffic during a deploy AND, separately, "if an instance fails consecutive health checks
+    # for 60 seconds, Render automatically restarts the instance" — i.e. Render's single check
+    # slot behaves like readiness during deploys and like liveness afterward. Pointing it at
+    # /readyz would mean a transient Postgres blip (which /readyz deliberately fails, by
+    # design — D111) could, after 60s, cause Render to RESTART the whole process. That is
+    # exactly the failure D110 exists to prevent: restarting cannot fix the database, it only
+    # discards the connection pool and every in-flight request, making recovery slower.
+    # /livez never consults a dependency, so a Postgres outage degrades this deploy without
+    # ever triggering a restart storm.
+    #
+    # This does not create a readiness gap at deploy time: the app pings Postgres and fails
+    # fast BEFORE it starts listening (cmd/api/main.go), so if Postgres is unreachable at
+    # boot, /livez is never reachable at all and the deploy correctly stalls rather than
+    # routing traffic to a broken instance.
+    healthCheckPath: /livez
+
+    # Render's equivalent of Fly's kill_timeout: the window between SIGTERM and SIGKILL.
+    # Default is 30s if omitted; raised here for the same reason Fly's was raised to 40 —
+    # HTTP_DRAIN_DELAY + HTTP_SHUTDOWN_TIMEOUT below must finish comfortably inside it, or a
+    # slow shutdown gets killed mid-drain, which is worse than no drain at all (connections
+    # cut at an arbitrary point instead of a chosen one). 5 + 15 = 20s of intended shutdown
+    # time against a 60s budget is generous margin, not a tight fit.
+    maxShutdownDelaySeconds: 60
+
+    envVars:
+      - key: JUNTO_ENV
+        value: production
+      - key: HTTP_ADDR
+        value: ":10000" # matches Render's default PORT; see the note above healthCheckPath
+      - key: HTTP_DRAIN_DELAY
+        # Shorter than Fly's 8s on purpose. Fly's number was sized against a load balancer
+        # polling /readyz every 2s and routing away from a failing instance — the thing the
+        # delay gives that mechanism time to notice. Render's free tier is a single instance
+        # with no equivalent continuous-readiness-based traffic routing to wait out, so the
+        # "go unready, then wait" choreography from D112 buys less here. Left non-zero anyway
+        # as a small, cheap defensive margin rather than proven necessary on this platform —
+        # stated honestly rather than ported over with Fly's reasoning attached unchanged.
+        value: "5s"
+      - key: HTTP_SHUTDOWN_TIMEOUT
+        value: "15s"
+      - key: HTTP_PROBE_TIMEOUT
+        value: "2s"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: junto-db
+          property: connectionString
+        # connectionString, not connectionPoolString: the API holds its own pgxpool
+        # (configs.DBConfig — MaxConns/MinConns) and pools connections itself, so routing
+        # through Render's separate connection pooler would be pooling on top of pooling for
+        # no benefit. Render's internal connection string is same-region and does not include
+        # `sslmode=disable`, which is the only substring config validation checks for and
+        # rejects in production — confirmed against the actual check in configs/config.go.
+
+      # REDIS_URL is deliberately ABSENT. Confirmed against the actual startup code
+      # (cmd/api/main.go) that this is a supported, non-error path: no REDIS_URL means
+      # in-memory fan-out, in-memory handshake tickets, purely local revocation, and a single
+      # WARN log line at boot — not a crash, not a degraded health check (the Redis probe in
+      # cmd/api/health.go is only registered when a Redis client exists at all).
+      - key: PUBLIC_BASE_URL
+        value: https://junto-api.onrender.com # update if you renamed the service
+      - key: WEB_BASE_URL
+        sync: false # the Vercel frontend URL — set once the frontend is deployed; see deploy.md
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false # same Vercel URL as WEB_BASE_URL
+
+      # Secrets: not stored in this file. `sync: false` prompts for a value once, during the
+      # Blueprint's first creation in the Render dashboard, and is otherwise ignored on
+      # subsequent blueprint syncs — see docs/deploy.md for what each of these needs to be.
+      - key: JWT_SECRET
+        sync: false
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        sync: false
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_USE_TLS
+        value: "true" # not a secret, but production validation refuses false — see D-series
+
+databases:
+  - name: junto-db
+    plan: free
+    region: singapore # must match the service's region for the internal connection string
+    postgresMajorVersion: "16" # pinned to match CI (postgres:16-alpine), not Render's
+    # floating default (17 as of this writing). CLAUDE.md's own reasoning for CI's pin
+    # applies identically here: "so a schema feature cannot silently disappear under us."
