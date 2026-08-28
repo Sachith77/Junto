@@ -160,16 +160,34 @@ type AuthConfig struct {
 
 	// AutoVerifyEmail marks new accounts verified at signup, skipping the emailed link.
 	//
-	// DEVELOPMENT AND TEST ONLY. Validate() refuses it in production, because it directly
-	// contradicts D29 — login requires a verified email precisely so that an address which
-	// was never proven cannot leave an account unrecoverable by password reset.
+	// DEVELOPMENT AND TEST BY DEFAULT. Validate() refuses it in production unless
+	// AllowAutoVerifyInProduction is also set, because it directly contradicts D29 — login
+	// requires a verified email precisely so that an address which was never proven cannot
+	// leave an account unrecoverable by password reset.
 	//
 	// It exists because the local demo loop (sign up, open Mailpit, find the link, click it)
 	// is friction with no reviewing value, and the alternative people actually reach for is
-	// weakening the real policy. The production behaviour is unchanged and unchangeable by
-	// configuration; this is an escape hatch bolted open only where there is nothing to
-	// protect.
+	// weakening the real policy.
 	AutoVerifyEmail bool
+
+	// AllowAutoVerifyInProduction lifts the production refusal of AutoVerifyEmail. It is a
+	// SECOND flag rather than a relaxation of the first, and the redundancy is the feature:
+	// D105 made auto-verify "refused, not ignored" so it could never be on by accident, and
+	// one variable that both requests and authorises the bypass would give that up. Setting
+	// two variables whose names say what they do is not something anyone does by mistake.
+	//
+	// The case it exists for is real and not hypothetical (D115): Render's free tier blocks
+	// outbound traffic to SMTP ports 25, 465 and 587 outright, so the deployed demo cannot
+	// send mail at all. That inverts D29's reasoning rather than merely inconveniencing it.
+	// D29 weighs an unproven address against an unusable account and picks the unusable one,
+	// because a proven address can still be recovered by password reset. With no outbound
+	// SMTP there is no reset mail either, so every account is unrecoverable regardless, and
+	// verification is not protecting anything — it is only refusing every login.
+	//
+	// This is therefore scoped to a deployment that CANNOT send mail, not a licence to skip
+	// verification on one that can. Restore real verification (an HTTP-API mail provider, or
+	// a paid instance) and both flags should come back off together.
+	AllowAutoVerifyInProduction bool
 
 	Argon2 Argon2Config
 }
@@ -255,8 +273,10 @@ func Load() (*Config, error) {
 			EmailVerifyTTL:   envDuration("EMAIL_VERIFY_TTL", 24*time.Hour),
 			PasswordResetTTL: envDuration("PASSWORD_RESET_TTL", time.Hour),
 			WSTicketTTL:      envDuration("WS_TICKET_TTL", 30*time.Second),
-			// DEVELOPMENT ONLY — see AuthConfig.AutoVerifyEmail and Validate().
-			AutoVerifyEmail: envBool("AUTH_AUTO_VERIFY_EMAIL", false),
+			// DEVELOPMENT ONLY unless explicitly acknowledged — see AuthConfig.AutoVerifyEmail,
+			// AllowAutoVerifyInProduction and Validate().
+			AutoVerifyEmail:             envBool("AUTH_AUTO_VERIFY_EMAIL", false),
+			AllowAutoVerifyInProduction: envBool("AUTH_ALLOW_AUTO_VERIFY_IN_PRODUCTION", false),
 			Argon2: Argon2Config{
 				// OWASP's second recommended profile: 64 MiB, t=3, p=4.
 				MemoryKiB:   uint32(envInt("ARGON2_MEMORY_KIB", 64*1024)),
@@ -414,11 +434,28 @@ func (c *Config) Validate() error {
 		// Refused rather than silently ignored. An operator who set this believes signups are
 		// auto-verified; booting anyway with it quietly disabled would be the worse failure —
 		// the same reasoning as D19 on malformed env values.
-		if c.Auth.AutoVerifyEmail {
+		//
+		// The escape hatch requires a SECOND variable (D115). Both must be set, so the bypass
+		// cannot be reached by a single misconfigured value, and the error below names the
+		// exact variable rather than describing it — an operator hitting this needs to know
+		// what to type, and an operator who did NOT mean to bypass verification needs the
+		// refusal to stay loud.
+		if c.Auth.AutoVerifyEmail && !c.Auth.AllowAutoVerifyInProduction {
 			problems = append(problems,
 				"AUTH_AUTO_VERIFY_EMAIL must not be enabled in production: it bypasses email "+
 					"verification, which D29 requires so an unproven address cannot leave an "+
-					"account unrecoverable")
+					"account unrecoverable. If this deployment genuinely cannot send mail (e.g. "+
+					"outbound SMTP is blocked by the platform), set "+
+					"AUTH_ALLOW_AUTO_VERIFY_IN_PRODUCTION=true to acknowledge that")
+		}
+		// The acknowledgement on its own does nothing, and saying so is the point: an operator
+		// who set only this one believes verification is bypassed and it is not. Same shape of
+		// failure as the rule above, in the opposite direction.
+		if c.Auth.AllowAutoVerifyInProduction && !c.Auth.AutoVerifyEmail {
+			problems = append(problems,
+				"AUTH_ALLOW_AUTO_VERIFY_IN_PRODUCTION is set but AUTH_AUTO_VERIFY_EMAIL is not: "+
+					"the acknowledgement alone changes nothing, and signups still require a "+
+					"verified email. Set both, or neither")
 		}
 		if !c.SMTP.UseTLS {
 			problems = append(problems, "SMTP_USE_TLS must be true in production")

@@ -203,6 +203,65 @@ func TestProductionOnlyRules(t *testing.T) {
 	}
 }
 
+// TestAutoVerifyInProductionNeedsBothFlags pins D115's escape hatch from both sides, because
+// only one of the two directions is the one people think of.
+//
+// The forward direction — both flags set, production boots with verification bypassed — is
+// what makes the deployed demo usable at all on a platform that blocks outbound SMTP. It
+// asserts the resulting config actually HAS AutoVerifyEmail true rather than merely that
+// loading succeeded, since a rule that silently dropped the flag would satisfy "no error"
+// perfectly well while leaving every signup unverifiable. That is the D19 failure shape the
+// original refusal was written to avoid, and it would be undetectable from the error alone.
+//
+// The reverse direction — acknowledgement without the flag it authorises — is the one a
+// reasonable person would leave out. It is here because setting it alone is a coherent
+// mistake with a misleading outcome: the operator believes signups are auto-verified, nothing
+// warns them, and every signup still demands mail that cannot arrive.
+//
+// Verified against a planted break: with the `&& !c.Auth.AllowAutoVerifyInProduction` guard
+// removed from the first rule, the forward case fails ("both flags set must be accepted").
+// With the second rule deleted entirely, the reverse case fails.
+func TestAutoVerifyInProductionNeedsBothFlags(t *testing.T) {
+	prodEnv := func() map[string]string {
+		return map[string]string{
+			"JUNTO_ENV":            "production",
+			"DATABASE_URL":         "postgres://junto:pw@db.internal:5432/junto?sslmode=require",
+			"JWT_SECRET":           strings.Repeat("k", 48),
+			"SMTP_USE_TLS":         "true",
+			"PUBLIC_BASE_URL":      "https://api.junto.app",
+			"WEB_BASE_URL":         "https://junto.app",
+			"CORS_ALLOWED_ORIGINS": "https://junto.app",
+		}
+	}
+
+	t.Run("both flags set is accepted and takes effect", func(t *testing.T) {
+		env := prodEnv()
+		env["AUTH_AUTO_VERIFY_EMAIL"] = "true"
+		env["AUTH_ALLOW_AUTO_VERIFY_IN_PRODUCTION"] = "true"
+		cfg, err := loadWith(t, env)
+		if err != nil {
+			t.Fatalf("both flags set must be accepted in production: %v", err)
+		}
+		if !cfg.Auth.AutoVerifyEmail {
+			t.Error("AutoVerifyEmail must survive validation, not be silently dropped: " +
+				"an operator who set both flags believes signups are auto-verified")
+		}
+	})
+
+	t.Run("acknowledgement alone is refused", func(t *testing.T) {
+		env := prodEnv()
+		env["AUTH_ALLOW_AUTO_VERIFY_IN_PRODUCTION"] = "true"
+		_, err := loadWith(t, env)
+		if err == nil {
+			t.Fatal("the acknowledgement alone changes nothing and must be refused rather " +
+				"than leaving the operator believing verification is bypassed")
+		}
+		if !strings.Contains(err.Error(), "AUTH_AUTO_VERIFY_EMAIL") {
+			t.Errorf("the error must name the variable that is missing, got: %v", err)
+		}
+	})
+}
+
 func TestDevelopmentIsNotHeldToProductionRules(t *testing.T) {
 	// The same settings that abort a production boot must stay convenient locally,
 	// otherwise the environment gate has no point.

@@ -2,13 +2,32 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { useAuth } from "@/context/AuthContext";
 import { TripSocketProvider } from "@/context/TripSocketContext";
 import { getTrip } from "@/lib/api/trips";
 import type { Trip } from "@/lib/types";
 import { PresenceBar } from "./PresenceBar";
 import { PlanNav } from "./plan/PlanNav";
+
+/** The trip TripShell already loaded, shared with everything it wraps.
+ *
+ *  It exists to stop the same GET /trips/{id} being issued twice per screen. The access
+ *  check below has to fetch the trip anyway, and PlanChrome needs nothing more than the
+ *  name — but it used to fetch it a second time, and the two could not overlap: PlanChrome
+ *  only mounts once the access check has resolved, so the duplicate was a whole extra
+ *  round trip in series, paid on every mode switch. Handing the first result down removes
+ *  the request rather than merely deduplicating it in a cache. */
+const TripContext = createContext<Trip | null>(null);
+
+/** The current trip, or null while the access check is still in flight.
+ *
+ *  Only valid under TripShell. Returning null rather than throwing outside it is
+ *  deliberate — the one consumer renders a placeholder title for the loading case anyway,
+ *  so a missing provider degrades to that instead of crashing the screen. */
+export function useTrip(): Trip | null {
+  return useContext(TripContext);
+}
 
 /** Auth guard + socket subscription, with NO visual chrome.
  *
@@ -23,8 +42,17 @@ export function TripShell({ tripId, children }: { tripId: string; children: Reac
   // Tagged with the trip it describes rather than reset synchronously when tripId changes:
   // a bare setAccess("checking") in the effect body is a cascading render, and deriving
   // "checking" from a stale tag gets the same result without one.
-  const [checked, setChecked] = useState<{ id: string; state: "ok" | "denied" } | null>(null);
+  // Carries the trip itself, not just the verdict: the access check has to fetch it, and
+  // throwing the body away only forced PlanChrome to ask for it again a moment later.
+  const [checked, setChecked] = useState<{
+    id: string;
+    state: "ok" | "denied";
+    trip: Trip | null;
+  } | null>(null);
   const access = checked?.id === tripId ? checked.state : "checking";
+  // Tag-matched for the same reason as `access` — a trip from the previous tripId must not
+  // be handed to the new one's children for the render before the effect re-runs.
+  const trip = checked?.id === tripId ? checked.trip : null;
 
   useEffect(() => {
     if (status === "anonymous") router.replace("/login");
@@ -42,8 +70,8 @@ export function TripShell({ tripId, children }: { tripId: string; children: Reac
     if (status !== "authenticated") return;
     let cancelled = false;
     getTrip(tripId)
-      .then(() => !cancelled && setChecked({ id: tripId, state: "ok" }))
-      .catch(() => !cancelled && setChecked({ id: tripId, state: "denied" }));
+      .then((t) => !cancelled && setChecked({ id: tripId, state: "ok", trip: t }))
+      .catch(() => !cancelled && setChecked({ id: tripId, state: "denied", trip: null }));
     return () => {
       cancelled = true;
     };
@@ -96,26 +124,22 @@ export function TripShell({ tripId, children }: { tripId: string; children: Reac
   }
 
   return (
-    <TripSocketProvider tripId={tripId}>
-      <div className="flex min-h-full flex-1 flex-col">{children}</div>
-    </TripSocketProvider>
+    <TripContext.Provider value={trip}>
+      <TripSocketProvider tripId={tripId}>
+        <div className="flex min-h-full flex-1 flex-col">{children}</div>
+      </TripSocketProvider>
+    </TripContext.Provider>
   );
 }
 
 /** Chrome for the DENSE inner app (Plan mode). Compact bar, serif title as the
  *  thread back to the outer shell, live presence on the right. */
 export function PlanChrome({ tripId, children }: { tripId: string; children: React.ReactNode }) {
-  const [trip, setTrip] = useState<Trip | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    getTrip(tripId)
-      .then((t) => !cancelled && setTrip(t))
-      .catch(() => {});
-    return () => {
-      cancelled = true;
-    };
-  }, [tripId]);
+  // Read from TripShell rather than fetched again. PlanChrome renders only after the access
+  // check upstream has resolved, so its own request could never have started until that one
+  // finished — it was a second round trip in series for a body already in memory, on every
+  // navigation into and between Plan screens. The title is available immediately now.
+  const trip = useTrip();
 
   return (
     <>

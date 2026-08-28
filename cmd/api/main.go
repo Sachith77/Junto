@@ -184,10 +184,19 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("building auth service: %w", err)
 	}
-	if cfg.Auth.AutoVerifyEmail {
+	switch {
+	case cfg.Auth.AutoVerifyEmail && cfg.Env.IsProduction():
+		// Deliberately ERROR, not WARN, and deliberately in production only. This is the one
+		// configuration in which a stranger can create an account on a real deployment without
+		// proving the address, so it should be the loudest line at boot rather than one WARN
+		// among the several this process already emits for absent Redis and storage (D115).
+		logger.Error("AUTH_AUTO_VERIFY_EMAIL is on IN PRODUCTION: new accounts are verified at " +
+			"signup without proving the address, and no verification email is sent. This is " +
+			"only defensible where the platform blocks outbound SMTP entirely. Turn both this " +
+			"and AUTH_ALLOW_AUTO_VERIFY_IN_PRODUCTION off as soon as mail can be delivered")
+	case cfg.Auth.AutoVerifyEmail:
 		logger.Warn("AUTH_AUTO_VERIFY_EMAIL is on: new accounts are verified at signup and no " +
-			"verification email is sent. Development convenience only — config validation " +
-			"refuses this in production")
+			"verification email is sent. Development convenience only")
 	}
 
 	// The broker is built BEFORE the planning services, because they take it as a

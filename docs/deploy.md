@@ -159,11 +159,47 @@ right now rather than expecting to edit `render.yaml` to change them later:
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_FROM` | Real SMTP credentials. **Not optional in production** — see below |
 | `WEB_BASE_URL`, `CORS_ALLOWED_ORIGINS` | The Netlify frontend's URL, once you know it (step 6) — a placeholder is fine for now, update after |
 
-**SMTP is load-bearing, not a nice-to-have.** `AUTH_AUTO_VERIFY_EMAIL` is refused outright by
-config validation in production (D105) — confirmed as pure application logic, gated only on
-`cfg.Env.IsProduction()`, with no platform dependency at all. Without working SMTP, **nobody
-can complete signup**, because email verification is required to log in (D29). Brevo's free
-tier (300 emails/day, no card) is a reasonable choice if you don't have a provider already.
+#### ⚠️ SMTP does not work on Render's free tier at all — and this deploy works around it
+
+**Render's free web services block outbound traffic to SMTP ports 25, 465 and 587**, per
+[Render's own changelog](https://render.com/changelog/free-web-services-will-no-longer-allow-outbound-traffic-to-smtp-ports).
+This is a network-level block at Render's edge, so it is not a credentials problem and no SMTP
+configuration fixes it: connections to those ports simply hang and fail with an `i/o timeout`.
+Diagnosed the slow way here — through Gmail app passwords and a TLS-mode review — before the
+changelog turned up, which is why it is stated this plainly.
+
+Because email verification is required to log in (D29), that left signup as a dead end: the
+verification link could never arrive. **This deploy therefore bypasses verification**, via two
+flags that must both be set (D115):
+
+```
+AUTH_AUTO_VERIFY_EMAIL=true
+AUTH_ALLOW_AUTO_VERIFY_IN_PRODUCTION=true
+```
+
+Both are in `render.yaml`. Config validation refuses **either one alone** — including the
+acknowledgement by itself, whose failure mode is an operator believing verification is off when
+it is still on. Two variables rather than one relaxed variable is the point: D105's guarantee
+was that this can never be on by accident, and that guarantee survives.
+
+**Know what it costs before relying on it.** It is not only verification:
+
+- Signup accepts **any address without proving it**, including one that does not exist.
+- **Password reset is dead too.** The reset mail cannot be delivered either, so a forgotten
+  password is unrecoverable — there is no recovery path on this deployment.
+- The API logs this at **ERROR on every boot** while the flags are set. That is deliberate, not
+  noise: it should be the loudest line in the log until it is fixed.
+
+**To restore real email** — and both flags should come off together the moment you do — pick
+either:
+
+1. **An HTTP-API mail provider** (Resend, Brevo, Mailgun, Postmark). These send over HTTPS on
+   port 443, which Render cannot block without breaking the app entirely. `domain.EmailSender`
+   is a **one-method interface** (`Send(ctx, EmailMessage) error`), so this is one new adapter
+   beside `internal/email/sender.go` and one constructor swap in `cmd/api/main.go` — it does
+   not touch the service layer. This is the recommended fix and keeps the free tier.
+2. **A paid Render instance.** Ports 465 and 587 are unblocked on any paid plan and the existing
+   SMTP sender starts working unchanged. Port 25 stays blocked on every plan, including paid.
 
 ### 4. Run migrations — manual, every time, no automatic hook on this plan
 
