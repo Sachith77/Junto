@@ -218,6 +218,23 @@ type TripRepository interface {
 	CurrentOpSeq(ctx context.Context, tripID ID) (int64, error)
 }
 
+// TripCoverRepository persists destination-photo cache entries and the upload lifecycle.
+// Active cover metadata lives on trips so listing cards never need an N+1 lookup.
+type TripCoverRepository interface {
+	GetSuggestionByQueryKey(ctx context.Context, key string, now time.Time) (*TripCoverSuggestion, error)
+	GetSuggestionByID(ctx context.Context, id ID) (*TripCoverSuggestion, error)
+	UpsertSuggestion(ctx context.Context, suggestion *TripCoverSuggestion) error
+
+	CreateUpload(ctx context.Context, upload *TripCoverUpload) error
+	GetUploadByID(ctx context.Context, id ID) (*TripCoverUpload, error)
+	ConfirmUpload(ctx context.Context, id ID, size int64, at time.Time) error
+	MarkUploadFailed(ctx context.Context, id ID, at time.Time) error
+
+	SetSuggested(ctx context.Context, tripID ID, suggestion *TripCoverSuggestion, at time.Time) error
+	SetNeutral(ctx context.Context, tripID ID, at time.Time) error
+	SetUploaded(ctx context.Context, tripID ID, upload *TripCoverUpload, at time.Time) error
+}
+
 // OpLogRepository persists the immutable operation log.
 //
 // There is deliberately no Update and no Delete. "Immutable" is enforced by this interface

@@ -37,9 +37,16 @@ type Config struct {
 	DB      DBConfig
 	Redis   RedisConfig
 	Storage StorageConfig
+	Photos  PhotoConfig
 	Auth    AuthConfig
 	SMTP    SMTPConfig
 	App     AppConfig
+}
+
+// PhotoConfig configures destination-aware cover suggestions. The key is optional: without
+// one, uploads still work and new trips receive the neutral cover.
+type PhotoConfig struct {
+	UnsplashAccessKey string
 }
 
 // StorageConfig points the attachment adapter at an S3-compatible endpoint.
@@ -264,6 +271,7 @@ func Load() (*Config, error) {
 			Region:    env("STORAGE_REGION", "us-east-1"),
 			UseSSL:    envBool("STORAGE_USE_SSL", false),
 		},
+		Photos: PhotoConfig{UnsplashAccessKey: os.Getenv("UNSPLASH_ACCESS_KEY")},
 		Auth: AuthConfig{
 			JWTSecret:        os.Getenv("JWT_SECRET"),
 			JWTIssuer:        env("JWT_ISSUER", "junto"),

@@ -20,6 +20,7 @@ import (
 	"github.com/junto/junto/configs"
 	"github.com/junto/junto/internal/domain"
 	"github.com/junto/junto/internal/email"
+	"github.com/junto/junto/internal/photos"
 	"github.com/junto/junto/internal/pubsub"
 	"github.com/junto/junto/internal/repository"
 	"github.com/junto/junto/internal/security"
@@ -85,6 +86,7 @@ func run() error {
 		comments    = repository.NewCommentRepository(pool)
 		budget      = repository.NewBudgetRepository(pool)
 		attachments = repository.NewAttachmentRepository(pool)
+		covers      = repository.NewTripCoverRepository(pool)
 		ops         = repository.NewOpLogRepository(pool)
 		txm         = repository.NewTxManager(pool)
 		hasher      = security.NewArgon2Hasher(cfg.Auth.Argon2)
@@ -241,7 +243,10 @@ func run() error {
 	// simply has no attachment surface, which is a legitimate way to run this and is what a
 	// deployment without a provisioned bucket gets. A nil service leaves the routes unmounted
 	// rather than mounting handlers that panic on first use.
-	var attachmentService *service.AttachmentService
+	var (
+		attachmentService *service.AttachmentService
+		fileStorage       domain.FileStorage
+	)
 	if cfg.Storage.Enabled() {
 		files, err := storage.NewS3Storage(ctx, storage.S3Config{
 			Endpoint:  cfg.Storage.Endpoint,
@@ -254,6 +259,7 @@ func run() error {
 		if err != nil {
 			return fmt.Errorf("connecting to object storage: %w", err)
 		}
+		fileStorage = files
 		attachmentService = service.NewAttachmentService(service.AttachmentDeps{
 			Attachments: attachments, Storage: files, Slots: slots, Options: options,
 			Budget: budget, Members: members, Trips: trips, Ops: ops, Tx: txm, Pub: broker,
@@ -264,6 +270,12 @@ func run() error {
 	} else {
 		logger.Warn("no STORAGE_ENDPOINT configured: attachment endpoints are not mounted")
 	}
+
+	coverService := service.NewTripCoverService(service.TripCoverDeps{
+		Covers: covers, Trips: trips, Members: members, Storage: fileStorage,
+		Provider: photos.NewUnsplash(cfg.Photos.UnsplashAccessKey), Tx: txm,
+		Clock: domain.SystemClock{}, Logger: logger,
+	})
 
 	engine := syncengine.NewEngine(syncengine.EngineConfig{
 		Broker:   broker,
@@ -313,6 +325,7 @@ func run() error {
 		Comments: commentService,
 		Budget:   budgetService,
 		Files:    attachmentService,
+		Covers:   coverService,
 		Logger:   logger,
 		Config: junto.RouterConfig{
 			AllowedOrigins: cfg.HTTP.CORSAllowedOrigins,

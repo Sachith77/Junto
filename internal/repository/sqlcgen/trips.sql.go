@@ -16,7 +16,7 @@ const createTrip = `-- name: CreateTrip :one
 
 INSERT INTO trips (id, name, description, start_date, end_date, time_zone)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, name, description, start_date, end_date, time_zone, version, created_at, updated_at, deleted_at, base_currency, op_seq
+RETURNING id, name, description, start_date, end_date, time_zone, version, created_at, updated_at, deleted_at, base_currency, op_seq, cover_source, cover_storage_key, cover_content_type, cover_image_url, cover_photographer_name, cover_photographer_url, cover_photo_url
 `
 
 type CreateTripParams struct {
@@ -52,12 +52,19 @@ func (q *Queries) CreateTrip(ctx context.Context, arg CreateTripParams) (Trip, e
 		&i.DeletedAt,
 		&i.BaseCurrency,
 		&i.OpSeq,
+		&i.CoverSource,
+		&i.CoverStorageKey,
+		&i.CoverContentType,
+		&i.CoverImageUrl,
+		&i.CoverPhotographerName,
+		&i.CoverPhotographerUrl,
+		&i.CoverPhotoUrl,
 	)
 	return i, err
 }
 
 const getTripByID = `-- name: GetTripByID :one
-SELECT id, name, description, start_date, end_date, time_zone, version, created_at, updated_at, deleted_at, base_currency, op_seq FROM trips WHERE id = $1 AND deleted_at IS NULL
+SELECT id, name, description, start_date, end_date, time_zone, version, created_at, updated_at, deleted_at, base_currency, op_seq, cover_source, cover_storage_key, cover_content_type, cover_image_url, cover_photographer_name, cover_photographer_url, cover_photo_url FROM trips WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) GetTripByID(ctx context.Context, id uuid.UUID) (Trip, error) {
@@ -76,12 +83,19 @@ func (q *Queries) GetTripByID(ctx context.Context, id uuid.UUID) (Trip, error) {
 		&i.DeletedAt,
 		&i.BaseCurrency,
 		&i.OpSeq,
+		&i.CoverSource,
+		&i.CoverStorageKey,
+		&i.CoverContentType,
+		&i.CoverImageUrl,
+		&i.CoverPhotographerName,
+		&i.CoverPhotographerUrl,
+		&i.CoverPhotoUrl,
 	)
 	return i, err
 }
 
 const listTripsForUser = `-- name: ListTripsForUser :many
-SELECT t.id, t.name, t.description, t.start_date, t.end_date, t.time_zone, t.version, t.created_at, t.updated_at, t.deleted_at, t.base_currency, t.op_seq FROM trips t
+SELECT t.id, t.name, t.description, t.start_date, t.end_date, t.time_zone, t.version, t.created_at, t.updated_at, t.deleted_at, t.base_currency, t.op_seq, t.cover_source, t.cover_storage_key, t.cover_content_type, t.cover_image_url, t.cover_photographer_name, t.cover_photographer_url, t.cover_photo_url FROM trips t
 JOIN trip_members m ON m.trip_id = t.id AND m.deleted_at IS NULL
 WHERE m.user_id = $1
   AND t.deleted_at IS NULL
@@ -140,6 +154,13 @@ func (q *Queries) ListTripsForUser(ctx context.Context, arg ListTripsForUserPara
 			&i.DeletedAt,
 			&i.BaseCurrency,
 			&i.OpSeq,
+			&i.CoverSource,
+			&i.CoverStorageKey,
+			&i.CoverContentType,
+			&i.CoverImageUrl,
+			&i.CoverPhotographerName,
+			&i.CoverPhotographerUrl,
+			&i.CoverPhotoUrl,
 		); err != nil {
 			return nil, err
 		}
@@ -149,6 +170,105 @@ func (q *Queries) ListTripsForUser(ctx context.Context, arg ListTripsForUserPara
 		return nil, err
 	}
 	return items, nil
+}
+
+const setTripNeutralCover = `-- name: SetTripNeutralCover :execrows
+UPDATE trips
+SET cover_source = 'neutral',
+    cover_storage_key = '',
+    cover_content_type = '',
+    cover_image_url = '',
+    cover_photographer_name = '',
+    cover_photographer_url = '',
+    cover_photo_url = '',
+    version = version + 1,
+    updated_at = $1
+WHERE id = $2 AND deleted_at IS NULL
+`
+
+type SetTripNeutralCoverParams struct {
+	UpdatedAt time.Time
+	ID        uuid.UUID
+}
+
+func (q *Queries) SetTripNeutralCover(ctx context.Context, arg SetTripNeutralCoverParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setTripNeutralCover, arg.UpdatedAt, arg.ID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setTripSuggestedCover = `-- name: SetTripSuggestedCover :execrows
+UPDATE trips
+SET cover_source = 'suggested',
+    cover_storage_key = '',
+    cover_content_type = '',
+    cover_image_url = $1,
+    cover_photographer_name = $2,
+    cover_photographer_url = $3,
+    cover_photo_url = $4,
+    version = version + 1,
+    updated_at = $5
+WHERE id = $6 AND deleted_at IS NULL
+`
+
+type SetTripSuggestedCoverParams struct {
+	ImageUrl         string
+	PhotographerName string
+	PhotographerUrl  string
+	PhotoUrl         string
+	UpdatedAt        time.Time
+	ID               uuid.UUID
+}
+
+func (q *Queries) SetTripSuggestedCover(ctx context.Context, arg SetTripSuggestedCoverParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setTripSuggestedCover,
+		arg.ImageUrl,
+		arg.PhotographerName,
+		arg.PhotographerUrl,
+		arg.PhotoUrl,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setTripUploadedCover = `-- name: SetTripUploadedCover :execrows
+UPDATE trips
+SET cover_source = 'uploaded',
+    cover_storage_key = $1,
+    cover_content_type = $2,
+    cover_image_url = '',
+    cover_photographer_name = '',
+    cover_photographer_url = '',
+    cover_photo_url = '',
+    version = version + 1,
+    updated_at = $3
+WHERE id = $4 AND deleted_at IS NULL
+`
+
+type SetTripUploadedCoverParams struct {
+	StorageKey  string
+	ContentType string
+	UpdatedAt   time.Time
+	ID          uuid.UUID
+}
+
+func (q *Queries) SetTripUploadedCover(ctx context.Context, arg SetTripUploadedCoverParams) (int64, error) {
+	result, err := q.db.Exec(ctx, setTripUploadedCover,
+		arg.StorageKey,
+		arg.ContentType,
+		arg.UpdatedAt,
+		arg.ID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const softDeleteTrip = `-- name: SoftDeleteTrip :execrows
@@ -194,7 +314,7 @@ SET name        = $1,
     version     = version + 1,
     updated_at  = $6
 WHERE id = $7 AND version = $8 AND deleted_at IS NULL
-RETURNING id, name, description, start_date, end_date, time_zone, version, created_at, updated_at, deleted_at, base_currency, op_seq
+RETURNING id, name, description, start_date, end_date, time_zone, version, created_at, updated_at, deleted_at, base_currency, op_seq, cover_source, cover_storage_key, cover_content_type, cover_image_url, cover_photographer_name, cover_photographer_url, cover_photo_url
 `
 
 type UpdateTripParams struct {
@@ -233,6 +353,13 @@ func (q *Queries) UpdateTrip(ctx context.Context, arg UpdateTripParams) (Trip, e
 		&i.DeletedAt,
 		&i.BaseCurrency,
 		&i.OpSeq,
+		&i.CoverSource,
+		&i.CoverStorageKey,
+		&i.CoverContentType,
+		&i.CoverImageUrl,
+		&i.CoverPhotographerName,
+		&i.CoverPhotographerUrl,
+		&i.CoverPhotoUrl,
 	)
 	return i, err
 }

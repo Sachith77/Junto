@@ -22,6 +22,8 @@
 export interface Cover {
   /** CSS background value for the media surface. */
   gradient: string;
+  image?: string;
+  position?: string;
   /** Palette name, useful for debugging and for tests that assert determinism. */
   name: string;
 }
@@ -38,46 +40,58 @@ export interface Cover {
 const COVERS: Cover[] = [
   {
     name: "dusk",
+    image: "/trip-covers/lisbon.png",
+    position: "center 45%",
     // Low sun at the right horizon — the warmest of the set.
     gradient:
-      "radial-gradient(120% 85% at 82% 88%, rgb(255 214 138 / 0.55) 0%, rgb(217 131 36 / 0.22) 38%, transparent 68%), " +
-      "linear-gradient(152deg, #241536 0%, #4a2440 32%, #8f4327 62%, #d98324 84%, #f4c76b 100%)",
+      "radial-gradient(105% 75% at 82% 88%, rgb(201 173 130 / 0.20) 0%, transparent 66%), " +
+      "linear-gradient(152deg, #171319 0%, #34252a 38%, #61402f 72%, #84633f 100%)",
   },
   {
     name: "sea",
+    image: "/trip-covers/coast.png",
+    position: "center 48%",
     // High, diffuse light from the upper left — water reads as lit from above.
     gradient:
-      "radial-gradient(95% 70% at 22% 12%, rgb(190 245 236 / 0.42) 0%, rgb(58 163 156 / 0.16) 44%, transparent 72%), " +
-      "linear-gradient(168deg, #06202e 0%, #0d3f52 34%, #176b76 64%, #3aa39c 86%, #93d8cd 100%)",
+      "radial-gradient(95% 70% at 22% 12%, rgb(182 202 192 / 0.20) 0%, transparent 72%), " +
+      "linear-gradient(168deg, #101719 0%, #1b3033 40%, #345151 74%, #60716a 100%)",
   },
   {
     name: "forest",
+    image: "/junto-valley.png",
+    position: "center 48%",
     // Light broken through canopy: tight, high, off to one side.
     gradient:
-      "radial-gradient(70% 55% at 68% 8%, rgb(214 233 168 / 0.40) 0%, rgb(92 127 69 / 0.16) 40%, transparent 66%), " +
-      "linear-gradient(135deg, #0a1a13 0%, #17301f 32%, #2f5133 62%, #5c7f45 84%, #a8bd76 100%)",
+      "radial-gradient(70% 55% at 68% 8%, rgb(205 208 174 / 0.18) 0%, transparent 66%), " +
+      "linear-gradient(135deg, #111712 0%, #222e22 40%, #3d4d38 74%, #656a50 100%)",
   },
   {
     name: "desert",
+    image: "/trip-covers/coast.png",
+    position: "center 55%",
     // Overhead glare, wide and bleaching. Note the fixed alpha typo in the old third stop
     // (#99442247 was an 8-digit hex in a list of 6-digit ones, so it rendered semi-transparent).
     gradient:
-      "radial-gradient(130% 90% at 50% 4%, rgb(255 233 190 / 0.46) 0%, rgb(194 103 44 / 0.18) 42%, transparent 70%), " +
-      "linear-gradient(160deg, #2a1112 0%, #5c2318 34%, #994422 60%, #c2672c 82%, #efb765 100%)",
+      "radial-gradient(120% 85% at 50% 4%, rgb(223 205 174 / 0.18) 0%, transparent 70%), " +
+      "linear-gradient(160deg, #1b1512 0%, #3d2a20 42%, #65452f 76%, #8a6d49 100%)",
   },
   {
     name: "alpine",
+    image: "/trip-covers/alpine.png",
+    position: "center 48%",
     // Cold light raking from the left, snow-bright at the edge.
     gradient:
-      "radial-gradient(85% 100% at 6% 42%, rgb(226 238 250 / 0.44) 0%, rgb(125 151 184 / 0.16) 40%, transparent 70%), " +
-      "linear-gradient(122deg, #121c2e 0%, #263a57 34%, #4a6485 64%, #7d97b8 86%, #c3d4e4 100%)",
+      "radial-gradient(85% 100% at 6% 42%, rgb(214 220 222 / 0.18) 0%, transparent 70%), " +
+      "linear-gradient(122deg, #14181d 0%, #29333b 42%, #48565e 76%, #737d7d 100%)",
   },
   {
     name: "night",
+    image: "/junto-valley.png",
+    position: "center 38%",
     // Moon: small, high, cool, and the only light in the frame.
     gradient:
-      "radial-gradient(52% 42% at 76% 16%, rgb(214 200 240 / 0.38) 0%, rgb(92 63 125 / 0.18) 46%, transparent 74%), " +
-      "linear-gradient(178deg, #0b0a14 0%, #1d1836 34%, #37275c 64%, #5c3f7d 86%, #9a7bb0 100%)",
+      "radial-gradient(52% 42% at 76% 16%, rgb(202 194 210 / 0.17) 0%, transparent 74%), " +
+      "linear-gradient(178deg, #111014 0%, #24212b 42%, #40394a 76%, #61586a 100%)",
   },
 ];
 
@@ -109,7 +123,29 @@ export type CoverName = (typeof COVERS)[number]["name"];
 export function coverFor(idOrName: string): Cover {
   const named = COVERS.find((c) => c.name === idOrName);
   if (named) return named;
+  if (idOrName.startsWith("neutral:")) {
+    const h = hash(idOrName);
+    const hue = 188 + (h % 42);
+    const warmHue = 24 + ((h >>> 8) % 24);
+    const x = 22 + ((h >>> 16) % 58);
+    return {
+      name: "neutral",
+      gradient:
+        `radial-gradient(90% 75% at ${x}% 18%, hsl(${warmHue} 28% 63% / .20) 0%, transparent 68%), ` +
+        `linear-gradient(145deg, hsl(${hue} 24% 9%) 0%, hsl(${hue} 22% 17%) 45%, hsl(${hue - 18} 18% 31%) 100%)`,
+    };
+  }
   return COVERS[hash(idOrName) % COVERS.length];
+}
+
+export function coverSeedForTrip(trip: { id: string; name: string; description?: string | null; cover?: { source?: string } }): string {
+  if (trip.cover?.source === "neutral") return `neutral:${trip.id}`;
+  if (trip.cover?.source && trip.cover.source !== "legacy") return trip.id;
+  const words = `${trip.name} ${trip.description ?? ""}`.toLowerCase();
+  if (/lisbon|sintra|portugal/.test(words)) return "dusk";
+  if (/goa|beach|coast|island|summer/.test(words)) return "sea";
+  if (/alpine|mountain|lake|snow|ski/.test(words)) return "alpine";
+  return trip.id;
 }
 
 /** Faint film grain. Inlined as a data URI so it costs no request and cannot be

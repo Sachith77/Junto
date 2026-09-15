@@ -16,6 +16,7 @@ export function Media({
   scrim = "media",
   style,
   underlay,
+  image,
 }: {
   /** Stable id — the cover is derived from it, so it never changes for a trip. */
   seed: string;
@@ -28,6 +29,8 @@ export function Media({
    *  than on top of it. This is where a focal bloom belongs: passed as a child it would sit
    *  above the scrim and read as a light shining ON the card instead of coming FROM it. */
   underlay?: ReactNode;
+  /** A real trip cover URL. When absent, the deterministic local artwork remains the fallback. */
+  image?: string;
 }) {
   const cover = coverFor(seed);
   const scrimValue =
@@ -42,7 +45,13 @@ export function Media({
       data-on-media
       data-cover={cover.name}
       className={`relative isolate overflow-hidden ${className}`}
-      style={{ background: cover.gradient, ...style }}
+      style={{
+        backgroundColor: "var(--color-surface-sunken)",
+        backgroundImage: image ? `url("${image.replace(/"/g, "%22")}")` : cover.image ? `url(${cover.image})` : cover.gradient,
+        backgroundPosition: cover.position ?? "center",
+        backgroundSize: image || cover.image ? "cover" : undefined,
+        ...style,
+      }}
     >
       {underlay}
       {/* Grain sits under the scrim so the scrim's own smoothness is not textured.

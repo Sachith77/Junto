@@ -104,7 +104,7 @@ export function DestinationDetail({ tripId, slotId }: { tripId: string; slotId: 
           >
             ← All memories
           </Link>
-          <h1 className="mt-16 font-display text-display-xl text-fg-on-media sm:mt-24">
+          <h1 className="mt-16 max-w-3xl font-display text-[clamp(2.25rem,8vw,2.75rem)] leading-[1.08] tracking-[-0.02em] text-fg-on-media sm:mt-24">
             {option?.title ?? slot.title}
           </h1>
           <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-ui-md text-fg-on-media-dim">

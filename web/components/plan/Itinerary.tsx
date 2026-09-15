@@ -217,11 +217,19 @@ export function Itinerary({ tripId }: { tripId: string }) {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-10">
+      <header className="border-b border-line-subtle pb-7">
+        <div>
+          <h1 className="font-editorial text-[3.25rem] font-semibold uppercase leading-none tracking-[-0.035em] text-fg">Itinerary</h1>
+          <p className="mt-1.5 max-w-xl text-ui-md text-fg-muted">The shared plan for each day.</p>
+        </div>
+      </header>
       {days.map((day, index) => (
-        <section key={day.id} data-testid="day-section" data-day-id={day.id}>
-          <div className="mb-3 flex items-baseline gap-3">
-            <h2 className="font-display text-display-sm text-fg">
+        <section key={day.id} data-testid="day-section" data-day-id={day.id} className="relative pl-7 sm:pl-10">
+          <span aria-hidden className="absolute bottom-[-2.5rem] left-[5px] top-2 w-px bg-line-subtle sm:left-[7px]" />
+          <span aria-hidden className="absolute left-0 top-1.5 h-3 w-3 rounded-full border-[3px] border-accent bg-surface shadow-[0_0_0_5px_rgba(183,206,224,0.12)] sm:h-4 sm:w-4" />
+          <div className="mb-4 flex flex-wrap items-baseline gap-3">
+            <h2 className="font-display text-display-md text-fg">
               {day.label || `Day ${index + 1}`}
             </h2>
             {day.date && (
@@ -247,7 +255,8 @@ export function Itinerary({ tripId }: { tripId: string }) {
       ))}
 
       {backlog.length > 0 && (
-        <section>
+        <section className="relative pl-7 sm:pl-10">
+          <span aria-hidden className="absolute left-0 top-1.5 h-3 w-3 rounded-full border-[3px] border-line-strong bg-surface sm:h-4 sm:w-4" />
           <div className="mb-3 flex items-baseline gap-3">
             <h2 className="font-display text-display-sm text-fg">Unscheduled</h2>
             <span className="text-ui-xs text-fg-subtle">not yet placed on a day</span>
@@ -539,7 +548,7 @@ function SlotRows({
   }
 
   return (
-    <ul className="space-y-2">
+    <ul className="space-y-2.5">
       {entries.map(({ slot, options }) => {
         const chosen = options.find((o) => o.id === slot.selected_option_id);
         // The flash goes on the LINK, not the <li>.
@@ -555,27 +564,27 @@ function SlotRows({
               {...flashProps(slot.id)}
               href={`/trips/${tripId}/plan/slots/${slot.id}`}
               data-testid="slot-row"
-              className="flex items-center gap-4 rounded-card border border-line-subtle bg-surface-raised px-4 py-3 transition-colors hover:border-line-strong"
+              className="group flex min-h-[5.25rem] items-center gap-4 rounded-card border border-line-subtle bg-surface-raised px-4 py-3.5 shadow-xs transition-[border-color,background-color,transform,box-shadow] hover:-translate-y-0.5 hover:border-line-strong hover:bg-[#1c2223] hover:shadow-md sm:px-5"
             >
-              <div className="w-14 shrink-0 text-ui-sm text-fg-subtle" data-numeric>
+              <div className="w-12 shrink-0 border-r border-line-subtle pr-4 text-right text-ui-sm font-medium text-accent-text sm:w-16" data-numeric>
                 {slot.start_time ?? "—"}
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="truncate text-ui-md font-medium text-fg">{slot.title}</span>
+                  <span className="truncate text-ui-lg font-medium text-fg transition-colors group-hover:text-white">{slot.title}</span>
                   {/* Sentence case, not uppercase, and a rounded-full pill rather than a box:
                       the previous chip was uppercase + tracked + boxed, which is the styling
                       this system reserves for things that matter more than the title they sit
                       next to. It read as a debug label. */}
                   <span
-                    className={`shrink-0 rounded-full px-2 py-0.5 text-ui-2xs font-medium ${
+                    className={`hidden shrink-0 rounded-full px-2 py-0.5 text-ui-2xs font-medium sm:inline-flex ${
                       KIND_TINT[slot.kind] ?? KIND_TINT.note
                     }`}
                   >
                     {KIND_LABEL[slot.kind] ?? slot.kind}
                   </span>
                 </div>
-                <p className="mt-0.5 truncate text-ui-xs text-fg-subtle">
+                <p className="mt-1 truncate text-ui-sm text-fg-muted">
                   {chosen ? (
                     <>Chosen: {chosen.title}</>
                   ) : options.length > 0 ? (
@@ -602,8 +611,8 @@ function SlotRows({
 function ResolutionPill({ decided, candidates }: { decided: boolean; candidates: number }) {
   if (decided) {
     return (
-      <span className="shrink-0 rounded-xs bg-accent px-2 py-1 text-ui-2xs font-semibold text-fg-inverse">
-        ✓ Chosen
+      <span className="shrink-0 rounded-full bg-accent px-2.5 py-1 text-ui-2xs font-semibold text-[#111619] shadow-sm">
+        Chosen ✓
       </span>
     );
   }
@@ -611,7 +620,7 @@ function ResolutionPill({ decided, candidates }: { decided: boolean; candidates:
   // language — and it sat on the same row as "No options proposed yet", saying the same thing
   // twice in two registers. The decision states are now Chosen / Undecided / No options.
   return (
-    <span className="shrink-0 rounded-xs border border-line px-2 py-1 text-ui-2xs font-medium text-fg-muted">
+    <span className="shrink-0 rounded-full border border-line px-2.5 py-1 text-ui-2xs font-medium text-fg-muted">
       {candidates > 0 ? "Undecided" : "No options"}
     </span>
   );

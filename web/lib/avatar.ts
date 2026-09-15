@@ -9,12 +9,12 @@
 // The palette is drawn from the cover art rather than from Tailwind's defaults, so a row of
 // avatars sits inside the product's colour world instead of looking like a chart legend.
 const AVATAR_COLORS = [
-  "#7c3f2f", // dusk clay
-  "#14596b", // sea
-  "#2f5133", // forest
-  "#8f4a0b", // accent-700
-  "#37275c", // night
-  "#4a6485", // alpine
+  "#76574d", // clay
+  "#4d6264", // mineral
+  "#59634f", // olive
+  "#806747", // ochre
+  "#625868", // mauve slate
+  "#536272", // blue slate
 ];
 
 export function avatarColor(userId: string): string {

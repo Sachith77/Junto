@@ -11,9 +11,9 @@ type Variant = "primary" | "secondary" | "ghost" | "onMedia";
 type Size = "sm" | "md" | "lg";
 
 const VARIANTS: Record<Variant, string> = {
-  primary: "bg-accent text-fg-inverse hover:bg-accent-hover shadow-xs",
+  primary: "bg-accent text-[#111619] hover:bg-accent-hover shadow-sm hover:shadow-md",
   secondary:
-    "border border-line bg-surface-raised text-fg hover:bg-surface-sunken hover:border-line-strong",
+    "border border-line bg-surface-raised text-fg hover:bg-[#202627] hover:border-line-strong",
   ghost: "text-fg-muted hover:bg-surface-sunken hover:text-fg",
   onMedia:
     "border border-white/25 bg-white/10 text-fg-on-media backdrop-blur-sm hover:bg-white/20 hover:border-white/40",
@@ -26,7 +26,7 @@ const SIZES: Record<Size, string> = {
 };
 
 const BASE =
-  "inline-flex items-center justify-center font-medium transition-colors duration-150 " +
+  "inline-flex items-center justify-center font-medium transition-[color,background-color,border-color,box-shadow,transform] duration-150 active:translate-y-px " +
   "disabled:cursor-not-allowed disabled:opacity-50 whitespace-nowrap";
 
 function classes(variant: Variant, size: Size, className?: string) {

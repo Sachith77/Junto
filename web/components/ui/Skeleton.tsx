@@ -9,7 +9,7 @@ export function Skeleton({ className = "" }: { className?: string }) {
   return (
     <div
       aria-hidden
-      className={`animate-pulse rounded-sm bg-ink-200/70 ${className}`}
+      className={`animate-pulse rounded-sm bg-line/70 ${className}`}
     />
   );
 }
@@ -20,13 +20,13 @@ export function Skeleton({ className = "" }: { className?: string }) {
  *  the note above says these exist to prevent. */
 export function TripCardSkeleton() {
   return (
-    <div className="relative h-80 overflow-hidden rounded-card bg-ink-200/70 sm:h-[24rem]">
+    <div className="relative h-80 overflow-hidden rounded-xl border border-line-subtle bg-surface-raised sm:h-[25rem]">
       <div className="absolute inset-x-0 top-0 p-6 sm:p-7">
-        <Skeleton className="h-3 w-44 bg-ink-300/70" />
+        <Skeleton className="h-3 w-44 bg-line/70" />
       </div>
       <div className="absolute inset-x-0 bottom-0 space-y-3 p-6 sm:p-7">
-        <Skeleton className="h-9 w-3/5 bg-ink-300/70" />
-        <Skeleton className="h-4 w-2/5 bg-ink-300/70" />
+        <Skeleton className="h-9 w-3/5 bg-line/70" />
+        <Skeleton className="h-4 w-2/5 bg-line/70" />
       </div>
     </div>
   );

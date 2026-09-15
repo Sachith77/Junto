@@ -23,6 +23,15 @@ export interface Trip {
   version: number;
   created_at: string;
   updated_at: string;
+  cover: TripCover;
+}
+
+export interface TripCover {
+  source: "legacy" | "neutral" | "suggested" | "uploaded";
+  url?: string;
+  photographer_name?: string;
+  photographer_url?: string;
+  photo_url?: string;
 }
 
 export interface Member {

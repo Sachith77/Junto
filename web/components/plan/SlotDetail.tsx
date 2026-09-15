@@ -159,16 +159,16 @@ export function SlotDetail({ tripId, slotId }: { tripId: string; slotId: string 
   const canVote = canResolve; // CapVote is granted to owner and editor, not viewer
 
   return (
-    <div className="space-y-8">
-      <header>
+    <div className="space-y-10">
+      <header className="border-b border-line-subtle pb-7">
         <Link
           href={`/trips/${tripId}/plan`}
           className="rounded-sm text-ui-sm text-fg-subtle transition-colors hover:text-fg"
         >
           ← Itinerary
         </Link>
-        <div className="mt-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <h1 className="font-display text-display-lg text-fg">{slot.title}</h1>
+        <div className="mt-7 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h1 className="font-display text-display-xl text-fg">{slot.title}</h1>
           {(slot.start_time || slot.end_time) && (
             <span data-numeric className="text-ui-md text-fg-muted">
               {slot.start_time ?? ""}
@@ -186,7 +186,7 @@ export function SlotDetail({ tripId, slotId }: { tripId: string; slotId: string 
         </p>
       )}
 
-      <section>
+      <section className="max-w-5xl">
         <div className="mb-3 flex items-baseline justify-between gap-4">
           <h2 className="font-display text-display-sm text-fg">Options</h2>
           <span className="text-ui-xs text-fg-subtle" data-numeric>

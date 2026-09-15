@@ -43,18 +43,26 @@ export default function TripsPage() {
         </ButtonLink>
       </ShellHeader>
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-12 sm:px-8 sm:py-16">
-        <div className="mb-10">
-          <h1 className="font-display text-display-xl text-fg">Your trips</h1>
-          <p className="mt-2 text-ui-lg text-fg-muted">
-            Pick up where the group left off.
-          </p>
+      <main className="mx-auto w-full max-w-[90rem] flex-1 px-5 py-8 sm:px-8 sm:py-10 lg:px-10">
+        <div className="mb-7 grid items-end gap-5 border-b border-line-subtle pb-7 sm:grid-cols-[1fr_auto] sm:pb-8">
+          <div>
+            <p className="text-ui-2xs font-semibold uppercase tracking-[.16em] text-accent-text">Trip library</p>
+            <h1 className="mt-3 font-editorial text-[clamp(4rem,8vw,7.5rem)] font-semibold uppercase leading-[.82] tracking-[-.045em] text-fg">Your trips</h1>
+          </div>
+          <div className="max-w-xs sm:pb-1 sm:text-right">
+            <p className="text-ui-md leading-relaxed text-fg-muted">Plans, decisions and shared memories—ready whenever the group is.</p>
+            {load.state === "ready" && (
+              <p className="mt-3 text-ui-2xs font-semibold uppercase tracking-[.14em] text-fg-subtle">
+                {load.trips.length} {load.trips.length === 1 ? "journey" : "journeys"}
+              </p>
+            )}
+          </div>
         </div>
 
         {load.state === "loading" && (
           <>
             <LoadingRegion label="Loading your trips" />
-            <div className="grid gap-6 sm:grid-cols-2">
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
               <TripCardSkeleton />
               <TripCardSkeleton />
             </div>
@@ -82,7 +90,7 @@ export default function TripsPage() {
             would need to span the full width to be legible as a choice, and that is a
             different design; uniform is the honest version of this one. */}
         {load.state === "ready" && load.trips.length > 0 && (
-          <div className="grid gap-6 sm:grid-cols-2">
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {load.trips.map((trip) => (
               <TripCard key={trip.id} trip={trip} />
             ))}

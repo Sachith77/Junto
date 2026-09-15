@@ -81,16 +81,23 @@ func toDomainUserToken(row sqlcgen.UserToken) *domain.UserToken {
 
 func toDomainTrip(row sqlcgen.Trip) *domain.Trip {
 	return &domain.Trip{
-		ID:          row.ID,
-		Name:        row.Name,
-		Description: row.Description,
-		StartDate:   row.StartDate,
-		EndDate:     row.EndDate,
-		TimeZone:    row.TimeZone,
-		Version:     int(row.Version),
-		CreatedAt:   row.CreatedAt,
-		UpdatedAt:   row.UpdatedAt,
-		DeletedAt:   row.DeletedAt,
+		ID:                    row.ID,
+		Name:                  row.Name,
+		Description:           row.Description,
+		StartDate:             row.StartDate,
+		EndDate:               row.EndDate,
+		TimeZone:              row.TimeZone,
+		CoverSource:           domain.CoverSource(row.CoverSource),
+		CoverStorageKey:       row.CoverStorageKey,
+		CoverContentType:      row.CoverContentType,
+		CoverImageURL:         row.CoverImageUrl,
+		CoverPhotographerName: row.CoverPhotographerName,
+		CoverPhotographerURL:  row.CoverPhotographerUrl,
+		CoverPhotoURL:         row.CoverPhotoUrl,
+		Version:               int(row.Version),
+		CreatedAt:             row.CreatedAt,
+		UpdatedAt:             row.UpdatedAt,
+		DeletedAt:             row.DeletedAt,
 	}
 }
 

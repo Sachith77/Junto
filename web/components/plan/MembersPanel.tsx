@@ -162,14 +162,14 @@ export function MembersPanel({ tripId }: { tripId: string }) {
   );
 
   return (
-    <div className="space-y-10">
+    <div className="grid gap-8 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] lg:items-start">
       <section>
-        <h1 className="font-display text-display-lg text-fg">Members</h1>
+        <h1 className="font-editorial text-[3.25rem] font-semibold uppercase leading-none tracking-[-0.035em] text-fg">People</h1>
         <p className="mt-1 text-ui-md text-fg-muted">
           Who is on this trip, and what they can do.
         </p>
 
-        <ul className="mt-5 divide-y divide-line-subtle rounded-card border border-line-subtle bg-surface-raised">
+        <ul className="mt-5 divide-y divide-line-subtle rounded-card border border-line-subtle bg-surface-raised shadow-sm">
           {loading &&
             [0, 1].map((i) => (
               <li key={i} className="flex items-center gap-3 px-4 py-3">
@@ -220,7 +220,7 @@ export function MembersPanel({ tripId }: { tripId: string }) {
                 <span
                   className={`shrink-0 rounded-xs px-2 py-0.5 text-ui-2xs font-semibold uppercase tracking-[0.08em] ${
                     m.role === "owner"
-                      ? "bg-accent text-fg-inverse"
+                      ? "bg-accent text-[#111619]"
                       : "border border-line text-fg-muted"
                   }`}
                 >
@@ -239,8 +239,8 @@ export function MembersPanel({ tripId }: { tripId: string }) {
       </section>
 
       {canInvite && (
-        <section>
-          <h2 className="font-display text-display-sm text-fg">Invite someone</h2>
+        <section className="rounded-xl border border-line-subtle bg-surface-raised p-5 shadow-sm sm:p-6">
+          <h2 className="font-display text-display-md text-fg">Invite someone</h2>
           {/* One line. The expiry/revocation detail was permanent body text explaining a
               mechanism nobody needs to know until they use it — and both facts are already
               visible on each row in Pending invitations below ("expires 18 Aug", "Revoke").

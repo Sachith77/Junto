@@ -154,18 +154,53 @@ type SlotOption struct {
 }
 
 type Trip struct {
+	ID                    uuid.UUID
+	Name                  string
+	Description           string
+	StartDate             *time.Time
+	EndDate               *time.Time
+	TimeZone              string
+	Version               int32
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
+	DeletedAt             *time.Time
+	BaseCurrency          string
+	OpSeq                 int64
+	CoverSource           string
+	CoverStorageKey       string
+	CoverContentType      string
+	CoverImageUrl         string
+	CoverPhotographerName string
+	CoverPhotographerUrl  string
+	CoverPhotoUrl         string
+}
+
+type TripCoverSuggestion struct {
+	ID               uuid.UUID
+	QueryKey         string
+	Query            string
+	Found            bool
+	ImageUrl         string
+	PhotographerName string
+	PhotographerUrl  string
+	PhotoUrl         string
+	DownloadLocation string
+	ExpiresAt        time.Time
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+}
+
+type TripCoverUpload struct {
 	ID           uuid.UUID
-	Name         string
-	Description  string
-	StartDate    *time.Time
-	EndDate      *time.Time
-	TimeZone     string
-	Version      int32
+	TripID       uuid.UUID
+	StorageKey   string
+	ContentType  string
+	OriginalName string
+	SizeBytes    *int64
+	Status       string
+	UploadedBy   *uuid.UUID
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
-	DeletedAt    *time.Time
-	BaseCurrency string
-	OpSeq        int64
 }
 
 type TripInvitation struct {

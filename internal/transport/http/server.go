@@ -55,6 +55,7 @@ type Deps struct {
 	Comments *service.CommentService
 	Budget   *service.BudgetService
 	Files    *service.AttachmentService
+	Covers   *service.TripCoverService
 	Logger   *slog.Logger
 	Config   RouterConfig
 
@@ -246,7 +247,7 @@ func NewRouter(deps Deps) (http.Handler, func()) {
 				authHandler.RevokeSession(w, req, chi.URLParam(req, "sessionID"))
 			})
 
-			tripHandler := NewTripHandler(deps.Trips, log)
+			tripHandler := NewTripHandler(deps.Trips, deps.Covers, log)
 			memberHandler := NewMembershipHandler(deps.Members, log)
 			dayHandler := NewDayHandler(deps.Days, log)
 			slotHandler := NewSlotHandler(deps.Slots, log)
@@ -256,12 +257,21 @@ func NewRouter(deps Deps) (http.Handler, func()) {
 
 			r.Post("/trips", tripHandler.Create)
 			r.Get("/trips", tripHandler.List)
+			if deps.Covers != nil {
+				coverHandler := NewTripCoverHandler(deps.Covers, log)
+				r.Get("/cover-suggestions", coverHandler.Suggest)
+			}
 			r.Post("/invitations/accept", memberHandler.AcceptInvitation)
 
 			r.Route("/trips/{tripID}", func(r chi.Router) {
 				r.Get("/", tripHandler.Get)
 				r.Patch("/", tripHandler.Update)
 				r.Delete("/", tripHandler.Delete)
+				if deps.Covers != nil {
+					coverHandler := NewTripCoverHandler(deps.Covers, log)
+					r.Post("/cover/uploads", coverHandler.RequestUpload)
+					r.Post("/cover/uploads/{uploadID}/confirm", coverHandler.ConfirmUpload)
+				}
 
 				r.Get("/members", memberHandler.ListMembers)
 				r.Patch("/members/{userID}", memberHandler.UpdateMemberRole)

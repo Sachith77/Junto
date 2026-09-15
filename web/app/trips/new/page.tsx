@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { createTrip } from "@/lib/api/trips";
+import { createTrip, uploadTripCover, type CoverSuggestion } from "@/lib/api/trips";
 import { useAuth } from "@/context/AuthContext";
 import { ApiError } from "@/lib/http";
 import { ShellHeader } from "@/components/ShellHeader";
 import { Button, ButtonLink } from "@/components/ui/Button";
-import { Media } from "@/components/ui/Media";
+import { CoverPhotoField } from "@/components/trips/CoverPhotoField";
 import { formatDateRange } from "@/lib/format";
 import { useBrowserTimeZone, useTimeZoneList } from "@/lib/useTimeZone";
 
@@ -28,6 +28,8 @@ export default function NewTripPage() {
   const [endDate, setEndDate] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [coverSuggestion, setCoverSuggestion] = useState<CoverSuggestion | null>(null);
 
   // Defaults to where the reader actually is; an explicit pick wins once made.
   const browserZone = useBrowserTimeZone();
@@ -46,8 +48,6 @@ export default function NewTripPage() {
   // the preview on the name keeps it stable while typing; the caption under it
   // says plainly that the final art is assigned on creation, because a preview
   // that quietly shows different art than you get is a small lie.
-  const previewSeed = name.trim() || "junto-new-trip";
-
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -60,7 +60,9 @@ export default function NewTripPage() {
         timeZone,
         startDate: startDate || null,
         endDate: endDate || null,
+        coverSuggestionId: coverFile ? null : coverSuggestion?.id ?? null,
       });
+      if (coverFile) await uploadTripCover(trip.id, coverFile);
       router.push(`/trips/${trip.id}`);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -176,7 +178,7 @@ export default function NewTripPage() {
 
             <div className="flex items-center gap-3 pt-2">
               <Button type="submit" size="lg" disabled={submitting || !name.trim()}>
-                {submitting ? "Creating…" : "Create trip"}
+                {submitting ? (coverFile ? "Creating and uploading…" : "Creating…") : "Create trip"}
               </Button>
               <ButtonLink href="/trips" variant="ghost" size="lg">
                 Cancel
@@ -188,7 +190,7 @@ export default function NewTripPage() {
             <p className="mb-3 text-ui-2xs font-medium uppercase tracking-[0.14em] text-fg-subtle">
               Preview
             </p>
-            <Media seed={previewSeed} className="h-72 rounded-card shadow-lg">
+            <CoverPhotoField destination={name} file={coverFile} onFileChange={setCoverFile} onSuggestionChange={setCoverSuggestion}>
               <div className="absolute inset-x-0 bottom-0 p-6">
                 <p className="text-ui-2xs font-medium uppercase tracking-[0.12em] text-accent-on-dark">
                   {formatDateRange(
@@ -196,19 +198,16 @@ export default function NewTripPage() {
                     endDate ? `${endDate}T00:00:00Z` : null
                   )}
                 </p>
-                <h2 className="mt-2 font-display text-display-lg text-fg-on-media">
+                <h2 className="mt-2 line-clamp-2 font-display text-display-lg text-fg-on-media">
                   {name.trim() || "Your trip"}
                 </h2>
                 {description.trim() && (
-                  <p className="mt-1.5 line-clamp-2 text-ui-md text-fg-on-media-dim">
+                  <p className="mt-1.5 line-clamp-2 break-words text-ui-md text-fg-on-media-dim">
                     {description.trim()}
                   </p>
                 )}
               </div>
-            </Media>
-            <p className="mt-3 text-ui-xs text-fg-subtle">
-              Cover art is assigned when the trip is created, then stays the same for everyone.
-            </p>
+            </CoverPhotoField>
           </aside>
         </div>
       </main>

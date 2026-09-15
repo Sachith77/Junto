@@ -36,11 +36,32 @@ type Trip struct {
 	// same itinerary, or the schedule means different things to different members.
 	TimeZone string
 
+	// Cover keeps durable cover metadata. CoverURL is populated only for API reads of a
+	// private upload; the signed URL itself is deliberately never stored.
+	CoverSource           CoverSource
+	CoverStorageKey       string
+	CoverContentType      string
+	CoverImageURL         string
+	CoverPhotographerName string
+	CoverPhotographerURL  string
+	CoverPhotoURL         string
+	CoverURL              string
+
 	Version   int
 	CreatedAt time.Time
 	UpdatedAt time.Time
 	DeletedAt *time.Time
 }
+
+// CoverSource describes how a trip's cover was selected.
+type CoverSource string
+
+const (
+	CoverSourceLegacy    CoverSource = "legacy"
+	CoverSourceNeutral   CoverSource = "neutral"
+	CoverSourceSuggested CoverSource = "suggested"
+	CoverSourceUploaded  CoverSource = "uploaded"
+)
 
 // IsDeleted reports whether the trip is soft-deleted.
 func (t *Trip) IsDeleted() bool { return t.DeletedAt != nil }

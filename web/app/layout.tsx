@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Fraunces, Inter } from "next/font/google";
+import { Barlow_Condensed, Fraunces, Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/context/AuthContext";
 
@@ -20,6 +20,13 @@ const inter = Inter({
   display: "swap",
 });
 
+const barlowCondensed = Barlow_Condensed({
+  subsets: ["latin"],
+  variable: "--font-barlow-condensed",
+  display: "swap",
+  weight: ["500", "600", "700"],
+});
+
 export const metadata: Metadata = {
   title: "Junto",
   description: "Collaborative trip planning",
@@ -27,7 +34,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${fraunces.variable} ${inter.variable} h-full antialiased`}>
+    <html lang="en" className={`${fraunces.variable} ${inter.variable} ${barlowCondensed.variable} h-full antialiased`}>
       {/* Browser extensions write their own attributes onto <body> before React hydrates —
           Bitdefender's `bis_register` / `__processed_<uuid>__` are the ones seen here, and
           password managers and ad blockers all do the same thing. React compares the server

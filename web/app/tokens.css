@@ -51,6 +51,7 @@
      -------------------------------------------------------------------------- */
   --font-display: var(--font-fraunces), ui-serif, Georgia, "Times New Roman", serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-editorial: var(--font-barlow-condensed), "Arial Narrow", sans-serif;
 
   /* --------------------------------------------------------------------------
      PRIMITIVE — INK (warm neutral)
@@ -82,16 +83,16 @@
        as TEXT on light -> accent-700, never 500/600 at small sizes
        as a TINT      -> accent-50 (selected-option background)
      -------------------------------------------------------------------------- */
-  --color-accent-50: #fef6ec;
-  --color-accent-100: #fbe8ce;
-  --color-accent-200: #f6d19e;
-  --color-accent-300: #efb365;
-  --color-accent-400: #e8971f; /* on-dark: rings, labels over photography */
-  --color-accent-500: #d97a06; /* brand mark */
-  --color-accent-600: #b45e09; /* interactive fill, white text 5.0:1 */
-  --color-accent-700: #8f4a0b; /* hover/pressed, and accent TEXT on light */
-  --color-accent-800: #6b380c;
-  --color-accent-900: #4a2709;
+  --color-accent-50: #edf4f7;
+  --color-accent-100: #dbe8ef;
+  --color-accent-200: #c7dce7;
+  --color-accent-300: #b7cee0;
+  --color-accent-400: #9fbccd;
+  --color-accent-500: #84a6b8;
+  --color-accent-600: #678a9c;
+  --color-accent-700: #527382;
+  --color-accent-800: #3a535f;
+  --color-accent-900: #253942;
 
   /* --------------------------------------------------------------------------
      PRIMITIVE — STATUS
@@ -100,12 +101,12 @@
      balance" / "they do not" pair, and the sync engine needs a conflict colour.
      Everything else is ink or accent.
      -------------------------------------------------------------------------- */
-  --color-positive-50: #ecfdf3;
-  --color-positive-600: #15803d; /* 4.8:1 on white */
-  --color-positive-700: #14663a;
-  --color-critical-50: #fef2f2;
-  --color-critical-600: #b91c1c; /* 5.9:1 on white */
-  --color-critical-700: #991b1b;
+  --color-positive-50: #182019;
+  --color-positive-600: #789277;
+  --color-positive-700: #9ab099;
+  --color-critical-50: #241817;
+  --color-critical-600: #b66d68;
+  --color-critical-700: #d59590;
 
   /* --------------------------------------------------------------------------
      SEMANTIC — SURFACE / TEXT / BORDER
@@ -114,39 +115,39 @@
      sitting over photography is a distinct role from content on paper, because
      it must never be allowed to inherit a light-ground colour by accident.
      -------------------------------------------------------------------------- */
-  --color-surface: var(--color-ink-50);
-  --color-surface-raised: #ffffff;
-  --color-surface-sunken: var(--color-ink-100);
-  --color-surface-inverse: var(--color-ink-950);
+  --color-surface: #111516;
+  --color-surface-raised: #181d1e;
+  --color-surface-sunken: #0c1011;
+  --color-surface-inverse: #eef2f3;
 
   /* Named `fg` rather than `text` so utilities read `text-fg-muted` instead of
      the stuttering `text-text-secondary`; same reason lines are `line` and not
      `border`. Ergonomics of the generated class name is part of the token
      design — a name that is annoying to type is a name people work around. */
-  --color-fg: var(--color-ink-900);
-  --color-fg-muted: var(--color-ink-600);
-  --color-fg-subtle: var(--color-ink-500);
+  --color-fg: #eef2f3;
+  --color-fg-muted: #aab3b5;
+  --color-fg-subtle: #747e81;
   --color-fg-inverse: #ffffff;
   --color-fg-on-media: #ffffff;
   --color-fg-on-media-dim: rgb(255 255 255 / 0.78);
 
-  --color-line-subtle: var(--color-ink-200);
-  --color-line: var(--color-ink-300);
-  --color-line-strong: var(--color-ink-400);
+  --color-line-subtle: #273033;
+  --color-line: #364246;
+  --color-line-strong: #536267;
 
   /* SEMANTIC — ACCENT ROLES. Thread #2 lives here. */
-  --color-accent: var(--color-accent-600);
-  --color-accent-hover: var(--color-accent-700);
-  --color-accent-text: var(--color-accent-700);
-  --color-accent-tint: var(--color-accent-50);
-  --color-accent-on-dark: var(--color-accent-400);
+  --color-accent: #b7cee0;
+  --color-accent-hover: #c9dce6;
+  --color-accent-text: #b7cee0;
+  --color-accent-tint: #19252b;
+  --color-accent-on-dark: #d8e7ef;
 
   /* SEMANTIC — LIVE. Real-time state: presence rings, arriving-op highlight.
      Same hue as accent by design — "something is live here" and "this is the
      chosen one" are both states worth the eye, and splitting them into two
      colours would make the interface louder without making it clearer. */
-  --color-live: var(--color-accent-500);
-  --color-live-tint: var(--color-accent-50);
+  --color-live: #a8c3d2;
+  --color-live-tint: #19252b;
 
   /* SEMANTIC — SLOT CATEGORY TINTS.
      Decorative classification, never status. Kept in their own block precisely so
@@ -159,16 +160,16 @@
      very low chroma as the -50 steps, with an -ink partner at the ~7:1 depth the
      rest of the palette uses for small text. Category is ALWAYS carried by the
      label as well, so none of this is colour-alone. */
-  --color-kind-lodging: var(--color-accent-50);
-  --color-kind-lodging-ink: var(--color-accent-800);
-  --color-kind-activity: var(--color-positive-50);
-  --color-kind-activity-ink: var(--color-positive-700);
-  --color-kind-transport: #eef4fb;
-  --color-kind-transport-ink: #2f5480;
-  --color-kind-place: #f4f0fa;
-  --color-kind-place-ink: #5b4488;
-  --color-kind-note: var(--color-ink-100);
-  --color-kind-note-ink: var(--color-ink-600);
+  --color-kind-lodging: #22231f;
+  --color-kind-lodging-ink: #b8b2a8;
+  --color-kind-activity: #22231f;
+  --color-kind-activity-ink: #b8b2a8;
+  --color-kind-transport: #22231f;
+  --color-kind-transport-ink: #b8b2a8;
+  --color-kind-place: #22231f;
+  --color-kind-place-ink: #b8b2a8;
+  --color-kind-note: #22231f;
+  --color-kind-note-ink: #b8b2a8;
 
   /* --------------------------------------------------------------------------
      TYPE SCALE — DISPLAY (serif)
@@ -262,11 +263,11 @@
      NOTE for the outer shell: over full-bleed photography, shadow does not
      read at all. Elevation there comes from the scrim, not from these.
      -------------------------------------------------------------------------- */
-  --shadow-xs: 0 1px 2px rgb(15 13 11 / 0.05);
-  --shadow-sm: 0 1px 2px rgb(15 13 11 / 0.04), 0 2px 6px rgb(15 13 11 / 0.06);
-  --shadow-md: 0 2px 4px rgb(15 13 11 / 0.04), 0 6px 16px rgb(15 13 11 / 0.08);
-  --shadow-lg: 0 4px 8px rgb(15 13 11 / 0.04), 0 16px 32px rgb(15 13 11 / 0.1);
-  --shadow-xl: 0 8px 16px rgb(15 13 11 / 0.05), 0 32px 64px rgb(15 13 11 / 0.14);
+  --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.24);
+  --shadow-sm: 0 1px 2px rgb(0 0 0 / 0.2), 0 5px 16px rgb(0 0 0 / 0.16);
+  --shadow-md: 0 2px 4px rgb(0 0 0 / 0.24), 0 10px 28px rgb(0 0 0 / 0.2);
+  --shadow-lg: 0 4px 8px rgb(0 0 0 / 0.25), 0 20px 48px rgb(0 0 0 / 0.28);
+  --shadow-xl: 0 8px 18px rgb(0 0 0 / 0.28), 0 36px 80px rgb(0 0 0 / 0.34);
 
   /* --------------------------------------------------------------------------
      MOTION
@@ -351,9 +352,34 @@
   body {
     background-color: var(--color-surface);
     color: var(--color-fg);
+    color-scheme: dark;
     font-family: var(--font-sans);
     font-size: var(--text-ui-md);
     line-height: var(--text-ui-md--line-height);
+  }
+
+  /* Large display faces have deliberately tight metrics. Balance their lines and
+     allow user-entered names to wrap before they can escape a card or collide
+     with adjacent copy. */
+  h1,
+  h2,
+  h3 {
+    overflow-wrap: anywhere;
+    text-wrap: balance;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background: radial-gradient(circle at 80% 0%, rgb(112 117 94 / 0.055), transparent 36rem);
+  }
+
+  ::selection {
+    background: rgb(232 151 31 / 0.28);
+    color: var(--color-fg);
   }
 
   /* Money, vote counts, sequence numbers and timestamps must not jitter as
@@ -369,7 +395,7 @@
      element — vote buttons, comment inputs, card links — is reachable and
      obviously focused when tabbed to. */
   :focus-visible {
-    outline: 2px solid var(--color-accent-600);
+    outline: 2px solid var(--color-accent-text);
     outline-offset: 2px;
     border-radius: var(--radius-xs);
   }

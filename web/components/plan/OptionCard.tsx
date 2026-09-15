@@ -61,21 +61,21 @@ export function OptionCard({
       data-chosen={isChosen}
       className={`relative overflow-hidden rounded-card border transition-colors ${
         isChosen
-          ? "border-accent-300 bg-accent-tint"
-          : "border-line-subtle bg-surface-raised hover:border-line"
+          ? "border-accent bg-accent-tint shadow-[0_12px_36px_rgba(0,0,0,0.18)]"
+          : "border-line-subtle bg-surface-raised hover:border-line-strong"
       }`}
     >
       {/* The rail is the greyscale-safe half of the chosen treatment. */}
-      {isChosen && <span aria-hidden className="absolute inset-y-0 left-0 w-1 bg-accent" />}
+      {isChosen && <span aria-hidden className="absolute inset-y-0 left-0 w-1.5 bg-accent" />}
 
-      <div className="flex items-start justify-between gap-4 p-4 pl-5">
+      <div className="flex flex-col gap-5 p-5 pl-6 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h3 className="text-ui-lg font-medium text-fg">{option.title}</h3>
             {isChosen && (
               <span
                 data-testid="chosen-badge"
-                className="rounded-xs bg-accent px-2 py-0.5 text-ui-2xs font-semibold uppercase tracking-[0.08em] text-fg-inverse"
+                className="rounded-full bg-accent px-2.5 py-1 text-ui-2xs font-semibold uppercase tracking-[0.08em] text-[#111619]"
               >
                 ✓ Chosen
               </span>
@@ -83,7 +83,7 @@ export function OptionCard({
             {/* Named explicitly rather than styled like the resolution — this is the fact
                 D41 says must NOT be mistaken for the decision. */}
             {!isChosen && isMostVoted && totalVotes > 0 && (
-              <span className="rounded-xs border border-line px-2 py-0.5 text-ui-2xs font-medium text-fg-muted">
+              <span className="rounded-full border border-line px-2.5 py-1 text-ui-2xs font-medium text-fg-muted">
                 Most votes
               </span>
             )}
@@ -114,7 +114,7 @@ export function OptionCard({
           </div>
         </div>
 
-        <div className="flex w-32 shrink-0 flex-col items-end gap-2">
+        <div className="flex shrink-0 items-center gap-3 border-t border-line-subtle pt-4 sm:w-40 sm:flex-col sm:items-end sm:border-l sm:border-t-0 sm:pl-5 sm:pt-0">
           {/* The tally: neutral, quiet, and quantitative. */}
           <div className="w-full text-right">
             <span
@@ -126,7 +126,7 @@ export function OptionCard({
             </span>
             <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-surface-sunken">
               <div
-                className="h-full rounded-full bg-line-strong transition-[width] duration-300"
+                className={`h-full rounded-full transition-[width] duration-300 ${hasMyVote ? "bg-accent" : "bg-line-strong"}`}
                 style={{ width: `${share}%` }}
               />
             </div>
@@ -138,7 +138,7 @@ export function OptionCard({
             disabled={disabled}
             onClick={hasMyVote ? onRetract : onVote}
             data-testid={hasMyVote ? "retract-vote" : "cast-vote"}
-            className="w-full"
+            className="min-w-28 flex-1 sm:w-full"
           >
             {hasMyVote ? "Voted ✓" : "Vote"}
           </Button>
@@ -149,7 +149,7 @@ export function OptionCard({
               disabled={disabled}
               onClick={isChosen ? onClearChoice : onChoose}
               data-testid={isChosen ? "clear-choice" : "choose-option"}
-              className="rounded-sm text-ui-xs text-fg-subtle underline underline-offset-2 transition-colors hover:text-fg disabled:opacity-50"
+              className="shrink-0 rounded-sm text-ui-xs text-fg-subtle underline underline-offset-4 transition-colors hover:text-accent-text disabled:opacity-50"
             >
               {isChosen ? "Un-choose" : "Choose this"}
             </button>

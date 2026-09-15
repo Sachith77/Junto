@@ -8,6 +8,8 @@ import { listDays, type Day } from "@/lib/api/days";
 import { Media } from "@/components/ui/Media";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { ButtonLink } from "@/components/ui/Button";
+import { useTrip } from "@/components/TripShell";
+import { coverSeedForTrip } from "@/lib/cover";
 import type { Slot, SlotOption } from "@/lib/types";
 
 /**
@@ -35,6 +37,7 @@ export interface Destination {
 }
 
 export function Memories({ tripId }: { tripId: string }) {
+  const trip = useTrip();
   const [destinations, setDestinations] = useState<Destination[] | null>(null);
 
   useEffect(() => {
@@ -91,15 +94,15 @@ export function Memories({ tripId }: { tripId: string }) {
 
   return (
     <main className="flex flex-1 flex-col">
-      <Media seed={tripId} scrim="hero" className="shrink-0">
-        <div className="relative mx-auto w-full max-w-6xl px-6 pb-14 pt-8 sm:px-8 sm:pb-20 sm:pt-10">
+      <Media seed={trip ? coverSeedForTrip(trip) : tripId} image={trip?.cover?.url} scrim="hero" className="shrink-0">
+        <div className="relative mx-auto w-full max-w-6xl px-6 pb-10 pt-7 sm:px-8 sm:pb-12 sm:pt-8">
           <Link
             href={`/trips/${tripId}`}
             className="rounded-sm text-ui-sm text-fg-on-media-dim transition-colors hover:text-fg-on-media"
           >
             ← Back to trip
           </Link>
-          <p className="mt-14 text-ui-2xs font-medium uppercase tracking-[0.16em] text-accent-on-dark sm:mt-20">
+          <p className="mt-12 text-ui-2xs font-medium uppercase tracking-[0.16em] text-accent-on-dark sm:mt-14">
             Memories
           </p>
           <h1 className="mt-3 font-display text-display-2xl text-fg-on-media">
@@ -108,10 +111,16 @@ export function Memories({ tripId }: { tripId: string }) {
           <p className="mt-3 max-w-xl text-ui-lg text-fg-on-media-dim">
             Every decision the group actually settled on, in the order you lived them.
           </p>
+          {trip?.cover?.source === "suggested" && trip.cover.photographer_name && (
+            <span className="absolute bottom-3 right-8 text-[10px] text-white/65">
+              Photo by <a href={trip.cover.photographer_url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:text-white hover:underline">{trip.cover.photographer_name}</a>{" "}
+              on <a href={trip.cover.photo_url} target="_blank" rel="noreferrer" className="underline-offset-2 hover:text-white hover:underline">Unsplash</a>
+            </span>
+          )}
         </div>
       </Media>
 
-      <div className="mx-auto w-full max-w-6xl px-6 py-12 sm:px-8 sm:py-16">
+      <div className="mx-auto w-full max-w-6xl px-6 py-9 sm:px-8 sm:py-10">
         {destinations.length === 0 ? (
           <EmptyMemories tripId={tripId} />
         ) : (
@@ -138,7 +147,7 @@ export function Memories({ tripId }: { tripId: string }) {
                   >
                     <Media
                       seed={slot.id}
-                      className="h-96 rounded-card shadow-lg transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)] group-hover:-translate-y-1"
+                      className="h-80 rounded-card shadow-lg transition-transform duration-300 ease-[cubic-bezier(.22,1,.36,1)] group-hover:-translate-y-1 sm:h-[22rem]"
                     >
                       <span className="absolute left-4 top-4 rounded-xs border border-white/25 bg-black/30 px-2 py-1 text-ui-2xs font-medium uppercase tracking-[0.1em] text-fg-on-media backdrop-blur-sm">
                         {String(i + 1).padStart(2, "0")}
@@ -149,10 +158,10 @@ export function Memories({ tripId }: { tripId: string }) {
                             {dayLabel}
                           </p>
                         )}
-                        <h3 className="mt-1.5 font-display text-display-md text-fg-on-media">
+                        <h3 className="mt-1.5 line-clamp-2 font-display text-display-md text-fg-on-media">
                           {option.title}
                         </h3>
-                        <p className="mt-1 line-clamp-2 text-ui-sm text-fg-on-media-dim">
+                        <p className="mt-1 line-clamp-2 break-words text-ui-sm text-fg-on-media-dim">
                           {option.place.name || slot.title}
                         </p>
                       </div>

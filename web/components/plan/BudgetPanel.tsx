@@ -211,9 +211,9 @@ export function BudgetPanel({ tripId }: { tripId: string }) {
 
   return (
     <div className="space-y-8">
-      <header className="flex flex-wrap items-end justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-4 border-b border-line-subtle pb-7">
         <div>
-          <h1 className="font-display text-display-lg text-fg">Budget</h1>
+          <h1 className="font-editorial text-[3.25rem] font-semibold uppercase leading-none tracking-[-0.035em] text-fg">Budget</h1>
           <p className="mt-1 text-ui-md text-fg-muted">
             What the trip has cost, and who owes whom.
           </p>
@@ -291,11 +291,11 @@ export function BudgetPanel({ tripId }: { tripId: string }) {
 
       {/* ---- Summary: the trustworthiness of these numbers is the point ---- */}
       <section className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div className="rounded-card border border-line-subtle bg-surface-raised p-5">
+        <div className="rounded-card border border-line-subtle border-t-accent bg-surface-raised p-6 shadow-sm">
           <p className="text-ui-2xs font-medium uppercase tracking-[0.12em] text-fg-subtle">
             Total spent
           </p>
-          <p data-numeric className="mt-1 font-display text-display-lg text-fg">
+          <p data-numeric className="mt-2 font-display text-display-xl text-fg">
             {formatMoney(total)}
           </p>
           <p className="mt-1 text-ui-xs text-fg-subtle">
@@ -337,7 +337,7 @@ export function BudgetPanel({ tripId }: { tripId: string }) {
           </div>
         </div>
 
-        <div className="rounded-card border border-line-subtle bg-surface-raised p-5">
+        <div className="rounded-card border border-line-subtle bg-surface-raised p-6 shadow-sm">
           <p className="text-ui-2xs font-medium uppercase tracking-[0.12em] text-fg-subtle">
             Settle up
           </p>

@@ -146,7 +146,7 @@ export function CommentThread({ tripId, slotId }: { tripId: string; slotId: stri
   const sorted = [...comments].sort((a, b) => a.created_at.localeCompare(b.created_at));
 
   return (
-    <div data-testid="comments-list" className="rounded-card border border-line-subtle bg-surface-raised">
+    <div data-testid="comments-list" className="overflow-hidden rounded-card border border-line-subtle bg-surface-raised shadow-sm">
       {error && (
         <p role="alert" className="border-b border-line-subtle bg-critical-50 px-4 py-2.5 text-ui-sm text-critical-700">
           {error}
@@ -163,7 +163,7 @@ export function CommentThread({ tripId, slotId }: { tripId: string; slotId: stri
               {...flashProps(c.id)}
               data-testid="comment"
               data-pending={c.pending ?? false}
-              className={`group flex gap-3 px-4 py-3 ${c.pending ? "opacity-60" : ""}`}
+              className={`group flex gap-3 px-4 py-4 transition-colors hover:bg-white/[.015] ${c.pending ? "opacity-60" : ""}`}
             >
               <span
                 aria-hidden
@@ -227,7 +227,7 @@ export function CommentThread({ tripId, slotId }: { tripId: string; slotId: stri
           rows={1}
           placeholder="Add a comment…"
           aria-label="Add a comment"
-          className="max-h-32 min-h-9 flex-1 resize-y rounded-sm border border-line bg-surface px-3 py-2 text-ui-md text-fg placeholder:text-fg-subtle focus:border-accent focus:outline-none"
+          className="max-h-32 min-h-10 flex-1 resize-y rounded-md border border-line bg-surface-sunken px-3 py-2.5 text-ui-md text-fg placeholder:text-fg-subtle focus:border-accent focus:outline-none"
         />
         <Button type="submit" size="sm" disabled={submitting || !draft.trim()} data-testid="post-comment">
           Post

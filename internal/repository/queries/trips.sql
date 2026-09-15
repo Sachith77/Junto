@@ -54,3 +54,42 @@ WHERE m.user_id = @user_id
   )
 ORDER BY t.created_at DESC, t.id DESC
 LIMIT @page_limit;
+
+-- name: SetTripSuggestedCover :execrows
+UPDATE trips
+SET cover_source = 'suggested',
+    cover_storage_key = '',
+    cover_content_type = '',
+    cover_image_url = @image_url,
+    cover_photographer_name = @photographer_name,
+    cover_photographer_url = @photographer_url,
+    cover_photo_url = @photo_url,
+    version = version + 1,
+    updated_at = @updated_at
+WHERE id = @id AND deleted_at IS NULL;
+
+-- name: SetTripNeutralCover :execrows
+UPDATE trips
+SET cover_source = 'neutral',
+    cover_storage_key = '',
+    cover_content_type = '',
+    cover_image_url = '',
+    cover_photographer_name = '',
+    cover_photographer_url = '',
+    cover_photo_url = '',
+    version = version + 1,
+    updated_at = @updated_at
+WHERE id = @id AND deleted_at IS NULL;
+
+-- name: SetTripUploadedCover :execrows
+UPDATE trips
+SET cover_source = 'uploaded',
+    cover_storage_key = @storage_key,
+    cover_content_type = @content_type,
+    cover_image_url = '',
+    cover_photographer_name = '',
+    cover_photographer_url = '',
+    cover_photo_url = '',
+    version = version + 1,
+    updated_at = @updated_at
+WHERE id = @id AND deleted_at IS NULL;
