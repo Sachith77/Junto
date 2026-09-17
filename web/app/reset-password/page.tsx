@@ -80,18 +80,18 @@ function ResetPasswordInner() {
           label="New password"
           type="password"
           autoComplete="new-password"
-          minLength={12}
+          minLength={8}
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          hint="At least 12 characters."
+          hint="At least 8 characters."
         />
         <Field
           id="confirm"
           label="Confirm new password"
           type="password"
           autoComplete="new-password"
-          minLength={12}
+          minLength={8}
           required
           value={confirm}
           onChange={(e) => setConfirm(e.target.value)}

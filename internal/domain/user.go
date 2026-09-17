@@ -65,7 +65,7 @@ func ValidateEmail(ve *ValidationError, field, email string) {
 // case) measurably push users toward predictable substitutions without improving entropy,
 // and NIST SP 800-63B recommends against them. Strength comes from Argon2id plus rate
 // limiting on the login endpoint, not from character-class theatre.
-const MinPasswordLength = 12
+const MinPasswordLength = 8
 
 // MaxPasswordLength caps input before it reaches the hasher. Argon2id has no bcrypt-style
 // 72-byte truncation problem, but an unbounded password is an unbounded amount of memory-hard
@@ -78,7 +78,7 @@ func ValidatePassword(ve *ValidationError, field, password string) {
 	case password == "":
 		ve.Add(field, "required", "password is required")
 	case utf8.RuneCountInString(password) < MinPasswordLength:
-		ve.Add(field, "too_short", "password must be at least 12 characters")
+		ve.Add(field, "too_short", "password must be at least 8 characters")
 	case len(password) > MaxPasswordLength:
 		ve.Add(field, "too_long", "password must be at most 1024 bytes")
 	}

@@ -112,13 +112,13 @@ export default function SignupPage() {
           label="Password"
           type="password"
           autoComplete="new-password"
-          minLength={12}
+          minLength={8}
           required
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           // Length-only by design; the compensating controls are Argon2id and the rate
           // limiter (D35), so the form asks for length rather than character classes.
-          hint="At least 12 characters. A short sentence works well."
+          hint="At least 8 characters. A short sentence works well."
         />
 
         <Button type="submit" size="lg" disabled={submitting} className="w-full">

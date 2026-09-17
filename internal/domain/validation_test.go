@@ -104,7 +104,7 @@ func TestValidatePasswordLengthOnly(t *testing.T) {
 	ve := &ValidationError{}
 	ValidatePassword(ve, "password", strings.Repeat("a", MinPasswordLength))
 	if ve.HasViolations() {
-		t.Error("a 12-character password must be accepted: length is the only rule")
+		t.Error("an 8-character password must be accepted: length is the only rule")
 	}
 
 	// No composition rules by design (NIST SP 800-63B). A long all-lowercase passphrase
