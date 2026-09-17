@@ -40,5 +40,10 @@ Thumbs.db
 /CLAUDE.md
 /docs/stage2-sync-design.md
 
-# Design-review screenshots (regenerated on demand)
-/web/shots/
+# Design-review screenshots are normally regenerated on demand. The four images below are
+# production landing-page assets, so they must be versioned for hosted builds.
+/web/shots/*
+!/web/shots/B1-itinerary.png
+!/web/shots/B2-slot-detail.png
+!/web/shots/B4-budget-split.png
+!/web/shots/C1-memories.png
