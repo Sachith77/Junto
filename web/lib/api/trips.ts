@@ -90,3 +90,11 @@ export async function uploadTripCover(tripId: string, file: File): Promise<Trip>
   if (!upload.ok) throw new Error(`cover upload failed: ${upload.status}`);
   return apiFetch<Trip>(`/api/v1/trips/${tripId}/cover/uploads/${ticket.id}/confirm`, { method: "POST" });
 }
+
+export async function deleteTrip(tripId: string, version: number): Promise<void> {
+  return apiFetch<void>(`/api/v1/trips/${tripId}`, {
+    method: "DELETE",
+    body: { version },
+  });
+}
+

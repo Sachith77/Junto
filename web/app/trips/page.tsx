@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { listTrips } from "@/lib/api/trips";
+import { deleteTrip, listTrips } from "@/lib/api/trips";
 import { useAuth } from "@/context/AuthContext";
 import { ShellHeader } from "@/components/ShellHeader";
 import { TripCard } from "@/components/TripCard";
@@ -32,6 +32,14 @@ export default function TripsPage() {
       cancelled = true;
     };
   }, [status]);
+
+  const handleDeleteTrip = async (tripId: string, version: number) => {
+    await deleteTrip(tripId, version);
+    setLoad((prev) => {
+      if (prev.state !== "ready") return prev;
+      return { ...prev, trips: prev.trips.filter((t) => t.id !== tripId) };
+    });
+  };
 
   if (status !== "authenticated") return null;
 
@@ -82,20 +90,14 @@ export default function TripsPage() {
 
         {load.state === "ready" && load.trips.length === 0 && <EmptyTrips />}
 
-        {/* One size for every card.
-            The first two used to get a taller treatment on the theory that an editorial grid
-            wants a focal point. In a two-column grid that only works when the count is even:
-            at three trips it produced two tall cards and one short one, which does not read
-            as emphasis — it reads as a layout bug, and it was reported as one. A "hero" row
-            would need to span the full width to be legible as a choice, and that is a
-            different design; uniform is the honest version of this one. */}
         {load.state === "ready" && load.trips.length > 0 && (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {load.trips.map((trip) => (
-              <TripCard key={trip.id} trip={trip} />
+              <TripCard key={trip.id} trip={trip} onDelete={handleDeleteTrip} />
             ))}
           </div>
         )}
+
       </main>
     </div>
   );

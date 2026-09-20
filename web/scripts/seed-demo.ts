@@ -146,9 +146,9 @@ async function main() {
     method: "POST",
     token: alice.token,
     body: JSON.stringify({
-      name: "Lisbon in autumn",
-      description: "Tiled streets, long lunches, and one very contested dinner reservation.",
-      time_zone: "Europe/Lisbon",
+      name: "Goa",
+      description: "Salt air, late lunches, and the places that stayed with us.",
+      time_zone: "Asia/Kolkata",
       start_date: "2026-09-14T00:00:00Z",
       end_date: "2026-09-21T00:00:00Z",
       version: 0,

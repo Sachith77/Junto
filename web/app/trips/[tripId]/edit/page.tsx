@@ -6,7 +6,7 @@ import { ShellHeader } from "@/components/ShellHeader";
 import { useTrip } from "@/components/TripShell";
 import { CoverPhotoField } from "@/components/trips/CoverPhotoField";
 import { Button, ButtonLink } from "@/components/ui/Button";
-import { updateTrip, uploadTripCover, type CoverSuggestion } from "@/lib/api/trips";
+import { deleteTrip, updateTrip, uploadTripCover, type CoverSuggestion } from "@/lib/api/trips";
 import { ApiError } from "@/lib/http";
 
 const FIELD = "w-full rounded-sm border border-line bg-surface-raised px-3 py-2.5 text-ui-lg text-fg placeholder:text-fg-subtle focus:border-accent focus:outline-none focus-visible:outline-2 focus-visible:outline-offset-0 focus-visible:outline-accent";
@@ -25,6 +25,10 @@ export default function EditTripPage({ params }: { params: Promise<{ tripId: str
   const [coverSuggestion, setCoverSuggestion] = useState<CoverSuggestion | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => { params.then(({ tripId: id }) => setTripId(id)); }, [params]);
   useEffect(() => {
@@ -50,6 +54,19 @@ export default function EditTripPage({ params }: { params: Promise<{ tripId: str
     } catch (err) {
       setError(err instanceof ApiError ? (err.violations[0]?.message ?? err.message) : "We couldn’t save the trip. Please try again.");
       setSubmitting(false);
+    }
+  };
+
+  const onDeleteTrip = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteTrip(tripId, trip.version);
+      router.push("/trips");
+      router.refresh();
+    } catch (err) {
+      setDeleteError(err instanceof ApiError ? (err.violations[0]?.message ?? err.message) : "Could not delete trip. Please try again.");
+      setDeleting(false);
     }
   };
 
@@ -87,7 +104,72 @@ export default function EditTripPage({ params }: { params: Promise<{ tripId: str
             </CoverPhotoField>
           </aside>
         </div>
+
+        {/* Danger Zone: Delete Trip */}
+        <section className="mt-16 rounded-card border border-critical-600/30 bg-critical-50/40 p-6 sm:p-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-ui-md font-semibold text-critical-700">Delete this trip</h2>
+              <p className="mt-1 max-w-xl text-ui-sm text-fg-muted">
+                Permanently delete this trip along with all itinerary slots, votes, comments, and budget splits. This action cannot be undone.
+              </p>
+            </div>
+            <div>
+              <Button
+                type="button"
+                variant="danger"
+                size="md"
+                onClick={() => setConfirmDeleteOpen(true)}
+              >
+                Delete trip
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        {/* Delete Confirmation Modal */}
+        {confirmDeleteOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-card border border-line bg-surface p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-150">
+              <h3 className="font-display text-display-md text-fg">Delete &ldquo;{trip.name}&rdquo;?</h3>
+              <p className="mt-3 text-ui-sm leading-relaxed text-fg-muted">
+                Are you sure you want to delete this trip? All collaborative plans, votes, and records will be removed immediately for everyone in the group.
+              </p>
+
+              {deleteError && (
+                <p className="mt-3 rounded-md bg-critical-50 p-2.5 text-ui-xs text-critical-700">
+                  {deleteError}
+                </p>
+              )}
+
+              <div className="mt-6 flex items-center justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="md"
+                  disabled={deleting}
+                  onClick={() => {
+                    setConfirmDeleteOpen(false);
+                    setDeleteError(null);
+                  }}
+                >
+                  Keep trip
+                </Button>
+                <Button
+                  type="button"
+                  variant="danger"
+                  size="md"
+                  disabled={deleting}
+                  onClick={onDeleteTrip}
+                >
+                  {deleting ? "Deleting…" : "Yes, delete trip"}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
 }
+

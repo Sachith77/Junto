@@ -10,28 +10,34 @@ Junto is a real-time collaborative trip planning app. Groups propose places, vot
 
 ## Features
 
-- **Shared Itinerary** — Organize days, time slots, and activities with drag-and-drop ordering via fractional indexing.
-- **Propose & Vote** — Anyone can suggest options for a slot; the group votes, and an organizer makes the final call.
-- **Live Presence & Real-time Sync** — WebSocket-powered updates: see who's online, watch votes and comments appear instantly across browsers.
-- **Budget & Split** — Track expenses, assign payers, split costs per-person, and see who owes whom with minimum-transfer settlement.
-- **Invite by Email** — Token-based invitations with role-based access (editor/viewer).
-- **Memories** — After the trip, browse every decision the group settled on, organized by day.
-- **File Attachments** — S3-compatible presigned uploads (MinIO locally, S3/R2 in production).
-- **Auth** — Email/password with Argon2id hashing, JWT access/refresh tokens, email verification, and password reset.
+- **Trip Hub & Mode Selection** — Clean cinematic entry point with *Plan*, *Live*, and *Memories* modes tailored for every phase of travel.
+- **Shared Itinerary** — Organize days, time slots, and activities with real-time status indicators (Chosen, Undecided) and drag-and-drop ordering.
+- **Propose & Vote** — Suggest multiple options per slot; the group votes live, and organizers finalize decisions.
+- **Live Presence & Real-time Sync** — WebSocket-powered live presence: see who's viewing the trip, watch votes and comments update instantly without reloading.
+- **Budget & Expense Split** — Log expenses with multi-person splits, track net creditor/debtor positions, and settle up with minimum transfers.
+- **Interactive Memories & Story Chapters** — Relive trips through curated photo scrapbooks, day-by-day narrative chapters, audio ambiance notes, and video story reels.
+- **Trip Settings & Management** — Custom cover photo uploads, Unsplash auto-suggestions, trip details editing, and complete trip lifecycle management.
+- **Role-based Invitations & Auth** — Secure token invitations, Argon2id password hashing, JWT session management, and granular permission controls.
 
 ---
 
 ## Screenshots
 
-| Itinerary | Voting & Discussion | Budget |
-|:-:|:-:|:-:|
-| ![Itinerary](web/shots/B1-itinerary.png) | ![Slot Detail](web/shots/B2-slot-detail.png) | ![Budget](web/shots/B3-budget.png) |
+### Trip Hub & Mode Selector
+![Trip Mode Picker](web/shots/A5-mode-picker.png)
 
-| Trip Home | Memories |
-|:-:|:-:|
-| ![Mode Picker](web/shots/A5-mode-picker.png) | ![Memories](web/shots/C1-memories.png) |
+### Planning & Shared Itinerary
+| Itinerary & Decisions | Budget & Cost Split |
+|:---:|:---:|
+| ![Itinerary](web/shots/B1-itinerary.png) | ![Budget](web/shots/B3-budget.png) |
+
+### Memories & Travel Storytelling
+| Scrapbook Archive | Journey Story & Photo Chapters |
+|:---:|:---:|
+| ![Memories Archive](web/shots/C1-memories.png) | ![Journey Chapters](web/shots/C2-chapters.png) |
 
 ---
+
 
 ## Tech Stack
 

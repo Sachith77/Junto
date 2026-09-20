@@ -7,7 +7,7 @@ import type { ComponentProps, ReactNode } from "react";
 // (accent-600 on light, accent-400 on dark), surfaced as a variant so call
 // sites cannot get it wrong by picking a colour.
 
-type Variant = "primary" | "secondary" | "ghost" | "onMedia";
+type Variant = "primary" | "secondary" | "ghost" | "onMedia" | "danger";
 type Size = "sm" | "md" | "lg";
 
 const VARIANTS: Record<Variant, string> = {
@@ -17,7 +17,9 @@ const VARIANTS: Record<Variant, string> = {
   ghost: "text-fg-muted hover:bg-surface-sunken hover:text-fg",
   onMedia:
     "border border-white/25 bg-white/10 text-fg-on-media backdrop-blur-sm hover:bg-white/20 hover:border-white/40",
+  danger: "bg-critical-600 text-white hover:bg-critical-700 shadow-sm hover:shadow-md",
 };
+
 
 const SIZES: Record<Size, string> = {
   sm: "h-8 px-3 text-ui-sm rounded-sm gap-1.5",
