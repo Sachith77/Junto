@@ -4,9 +4,8 @@
 
 Junto is a real-time collaborative trip planning app. Groups propose places, vote on them, split costs, and discuss decisions — all in a shared itinerary that updates for everyone the moment anyone changes it.
 
-![Landing](web/shots/A1-landing.png)
-
 ---
+
 
 ## Features
 
